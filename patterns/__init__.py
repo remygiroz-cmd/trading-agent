@@ -32,9 +32,17 @@ PATTERNS = {
 
 
 def detect_all(df) -> list[dict]:
-    """Applique toutes les figures sur un DataFrame. Retourne tous les résultats."""
+    """Applique les figures ACTIVÉES (config.ENABLED_PATTERNS) sur un DataFrame."""
+    try:
+        import config
+        enabled = set(config.ENABLED_PATTERNS)
+    except Exception:  # noqa: BLE001
+        enabled = set(PATTERNS.keys())
+
     results = []
     for nom, fn in PATTERNS.items():
+        if nom not in enabled:
+            continue
         try:
             results.append(fn(df))
         except Exception as e:  # noqa: BLE001

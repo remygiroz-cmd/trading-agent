@@ -155,8 +155,16 @@ AI_REQUEST = {
 # RÈGLES MÉTIER (seuils d'alerte)
 # ─────────────────────────────────────────────────────────────
 
+# Figures activées. Le high_tight_flag est désactivé : le backtest montre qu'il
+# fait perdre de l'argent sur cette watchlist (31,7% de réussite, espérance < 0).
+# À réactiver si sa détection est améliorée (cf. backtest.py).
+ENABLED_PATTERNS = [
+    "bull_flag", "cup_handle", "vcp", "pocket_pivot", "flat_base", "double_bottom",
+]
+
 ALERT_RULES = {
-    "min_setup_score": 30,       # /50 — seuil pour envoyer aux IA
+    "min_setup_score": 35,       # /50 — relevé de 30 à 35 : le backtest montre que
+                                 # la tranche 30-35 est à espérance nulle, 40+ excellent
     "min_final_score": 75,       # /100 — seuil pour envoyer une alerte
     "min_buy_votes": 2,          # minimum 2 IA sur 3 votent ACHETER
     "high_conviction_score": 85, # /100 — alerte ✅ vs ⚡
