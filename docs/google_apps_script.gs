@@ -42,10 +42,13 @@ function doPost(e) {
     });
 
     // Recherche d'une ligne existante par id (colonne 1)
-    var ids = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 0), 1).getValues();
     var foundRow = -1;
-    for (var i = 0; i < ids.length; i++) {
-      if (ids[i][0] === row.id && row.id !== "") { foundRow = i + 2; break; }
+    var numRows = sheet.getLastRow() - 1;  // hors en-tête
+    if (numRows > 0 && row.id) {
+      var ids = sheet.getRange(2, 1, numRows, 1).getValues();
+      for (var i = 0; i < ids.length; i++) {
+        if (ids[i][0] === row.id) { foundRow = i + 2; break; }
+      }
     }
 
     if (foundRow > 0) {
