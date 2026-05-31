@@ -196,10 +196,15 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         _record_activity(summary)
         return summary
 
-    # 4. Figures + débat sur les finalistes
+    # 4. Figures + filtres qualité + débat sur les finalistes
     data = data_fetcher.fetch_batch(cand_tickers, period="200d", interval="1d")
     paper = paper_trading.is_paper_active()
     ai_weights = debate_out_weights()
+
+    # Référence marché pour la force relative (#3)
+    import market_context
+    spx_df = data_fetcher.fetch_ticker(config.RELATIVE_STRENGTH["market_ticker"],
+                                       period="200d", interval="1d")
 
     finalists = 0
     for tk in cand_tickers:
@@ -214,13 +219,31 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         if not best or best.get("setup_score", 0) < config.ALERT_RULES["min_setup_score"]:
             continue
 
+        # #3 Force relative : le titre doit surperformer le marché
+        rs_ok, rs = market_context.passes_relative_strength(df, spx_df)
+        if not rs_ok:
+            logger.info("%s écarté : force relative négative (%.1f%% vs marché)",
+                        tk, (rs.get("outperformance") or 0) * 100)
+            continue
+
+        # #2 Filtre résultats : pas de signal si résultats pendant la détention
+        horizon_guess = int(best.get("base_candles") or 10)
+        earn_soon, days_e = market_context.earnings_in_horizon(tk, max(horizon_guess, 10))
+        if earn_soon:
+            logger.info("%s écarté : résultats dans %s jours (risque de gap)", tk, days_e)
+            continue
+
         finalists += 1
         if max_finalists and finalists > max_finalists:
             logger.info("Plafond finalistes atteint (%s)", max_finalists)
             break
 
-        logger.info("Finaliste %s : %s (%.1f/50) -> débat", tk, best["pattern"], best["setup_score"])
+        logger.info("Finaliste %s : %s (%.1f/50, RS +%.1f%%) -> débat", tk, best["pattern"],
+                    best["setup_score"], (rs.get("outperformance") or 0) * 100)
         ctx = context_builder.build_context(tk, snap, best, market)
+        # enrichir le contexte IA avec RS et résultats
+        ctx["sector_trend"] = (f"force relative {(rs.get('outperformance') or 0)*100:+.1f}% vs marché")
+        ctx["next_earnings"] = f"dans {days_e} jours" if days_e is not None else "n/d"
         debate_out = debate.run_debate(ctx, weights=ai_weights)
 
         res = debate_out["result"]

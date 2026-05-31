@@ -78,6 +78,22 @@ PREFILTER_CRITERIA = {
     "min_avg_volume": 100000,        # Volume moyen > 100k actions/jour
 }
 
+# ─────────────────────────────────────────────────────────────
+# FILTRES DE QUALITÉ SUPPLÉMENTAIRES (#2 résultats, #3 force relative)
+# ─────────────────────────────────────────────────────────────
+
+RELATIVE_STRENGTH = {
+    "enabled": True,
+    "lookback_days": 63,          # ~3 mois
+    "min_outperformance": 0.0,    # le titre doit au moins égaler le marché
+    "market_ticker": "^GSPC",
+}
+
+EARNINGS_FILTER = {
+    "enabled": True,
+    "buffer_days": 2,             # marge de sécurité autour de la date de résultats
+}
+
 # Plafond du nombre de candidats transmis à la détection de figures + IA.
 # La watchlist dynamique étant déjà issue d'un screener momentum, le pré-filtre
 # peut retourner beaucoup de candidats les jours de forte hausse. On borne donc

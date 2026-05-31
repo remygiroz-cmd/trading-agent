@@ -65,10 +65,14 @@ def _market_regime(years: int) -> dict:
     return {d.strftime("%Y-%m-%d"): bool(v) for d, v in bullish.items()}
 
 
-def backtest_ticker(ticker: str, df: pd.DataFrame, regime: dict) -> list[dict]:
+def backtest_ticker(ticker: str, df: pd.DataFrame, regime: dict,
+                    spx_by_date: dict | None = None) -> list[dict]:
     """Backtest un ticker. Retourne la liste des trades simulés."""
     if df.empty or len(df) < WARMUP + HORIZON + 5:
         return []
+    spx_by_date = spx_by_date or {}
+    rs_lookback = config.RELATIVE_STRENGTH["lookback_days"]
+    rs_enabled = config.RELATIVE_STRENGTH["enabled"]
     df = data_fetcher.add_indicators(df)
     trades = []
     next_allowed = WARMUP
@@ -102,6 +106,16 @@ def backtest_ticker(ticker: str, df: pd.DataFrame, regime: dict) -> list[dict]:
         bullish = regime.get(date_str, True)
         if not bullish:
             continue
+
+        # #3 Force relative : le titre doit surperformer le S&P sur lookback
+        if rs_enabled and i >= rs_lookback:
+            prev_date = df.index[i - rs_lookback].strftime("%Y-%m-%d")
+            spx_now, spx_prev = spx_by_date.get(date_str), spx_by_date.get(prev_date)
+            if spx_now and spx_prev and spx_prev > 0:
+                stock_ret = (price - closes[i - rs_lookback]) / closes[i - rs_lookback]
+                mkt_ret = (spx_now - spx_prev) / spx_prev
+                if (stock_ret - mkt_ret) < config.RELATIVE_STRENGTH["min_outperformance"]:
+                    continue
 
         # Détection des figures sur la fenêtre jusqu'à i (pas de look-ahead)
         window = df.iloc[: i + 1]
@@ -174,13 +188,19 @@ def run_backtest(tickers: list[str], years: int = 2) -> None:
           f"(objectif +{TARGET_PCT*100:.0f}%, stop -{STOP_PCT*100:.0f}%, horizon {HORIZON}j)")
     print("Hypothèse : signaux pris uniquement quand S&P > MA50.\n")
     regime = _market_regime(years)
+    spx = data_fetcher.fetch_ticker(config.RELATIVE_STRENGTH["market_ticker"],
+                                    period=f"{years+1}y", interval="1d")
+    spx_by_date = {d.strftime("%Y-%m-%d"): float(c) for d, c in spx["close"].items()} if not spx.empty else {}
+    if config.RELATIVE_STRENGTH["enabled"]:
+        print("Filtre force relative ACTIVÉ (titre doit surperformer le S&P).\n")
+
     data = data_fetcher.fetch_batch(tickers, period=f"{years}y", interval="1d")
     all_trades = []
     for tk in tickers:
         df = data.get(tk)
         if df is None or df.empty:
             continue
-        t = backtest_ticker(tk, df, regime)
+        t = backtest_ticker(tk, df, regime, spx_by_date)
         all_trades.extend(t)
         if t:
             wr = sum(1 for x in t if x["result_pct"] > 0) / len(t)
