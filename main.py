@@ -19,6 +19,7 @@ Utilisation :
 
 import sys
 import logging
+import datetime as dt
 
 import config
 import data_fetcher
@@ -162,6 +163,7 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         if send_alerts:
             notifier(market["reason"])
         summary["suspended"] = market["reason"]
+        _record_activity(summary)
         return summary
 
     # 2. Watchlist filtrée
@@ -182,6 +184,7 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
 
     full = watchlist.get_full_watchlist(blacklist=blacklist)
     tickers = watchlist.filter_by_markets(full, markets)
+    summary["tickers"] = len(tickers)
     logger.info("Watchlist : %s tickers (%s marchés)", len(tickers), markets)
 
     # 3. Pré-filtre
@@ -190,6 +193,7 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
     cand_tickers = [c["ticker"] for c in candidates]
     logger.info("Pré-filtre : %s candidats", len(cand_tickers))
     if not cand_tickers:
+        _record_activity(summary)
         return summary
 
     # 4. Figures + débat sur les finalistes
@@ -231,9 +235,32 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
             summary["alerts"] += 1
 
     summary["finalists"] = finalists
+    summary["best_score"] = max((d["final_score"] for d in summary["details"]), default=0)
     logger.info("Scan terminé : %s candidats, %s finalistes, %s alertes",
                 summary["candidates"], finalists, summary["alerts"])
+    _record_activity(summary)
     return summary
+
+
+def _record_activity(summary: dict) -> None:
+    """Enregistre l'activité du scan (pour le bilan santé du soir)."""
+    try:
+        from memory import state
+        today = dt.datetime.now().strftime("%Y-%m-%d")
+        log = state.get_state("activity", default={}) or {}
+        day = log.get(today, [])
+        day.append({
+            "label": summary.get("label"),
+            "tickers": summary.get("tickers", 0),
+            "candidates": summary.get("candidates", 0),
+            "finalists": summary.get("finalists", 0),
+            "alerts": summary.get("alerts", 0),
+            "best_score": summary.get("best_score", 0),
+            "suspended": summary.get("suspended"),
+        })
+        state.set_state("activity", {today: day})  # ne conserve qu'aujourd'hui
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Enregistrement activité échoué : %s", e)
 
 
 def debate_out_weights():

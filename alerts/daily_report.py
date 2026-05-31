@@ -52,7 +52,58 @@ Meilleure IA semaine  : {perf.get('best_agent', 'n/d')}
 """
     if adjustments:
         msg += f"\n🔧 Ajustements automatiques :\n{adjustments}"
+
+    # Bloc santé : permet de distinguer "rien à signaler" d'un "bug"
+    msg += "\n\n" + build_health_block()
     return msg
+
+
+def build_health_block(date_iso: str | None = None) -> str:
+    """
+    Résumé de l'activité des scans du jour : permet de savoir si l'absence
+    d'alerte est NORMALE (aucun setup au-dessus du seuil) ou suspecte (bug/infra).
+    """
+    import config
+    try:
+        from memory import state
+        import datetime as dt
+        today = date_iso or dt.datetime.now().strftime("%Y-%m-%d")
+        log = state.get_state("activity", default={}) or {}
+        runs = log.get(today, [])
+    except Exception as e:  # noqa: BLE001
+        return f"🩺 Santé : impossible de lire l'activité ({e})."
+
+    if not runs:
+        return ("🩺 Santé : ⚠️ AUCUN scan enregistré aujourd'hui.\n"
+                "Si on est un jour de bourse, c'est anormal (vérifier GitHub Actions).")
+
+    suspended = [r for r in runs if r.get("suspended")]
+    if suspended and len(suspended) == len(runs):
+        return f"🩺 Santé : marché défavorable toute la journée — scans suspendus.\n{suspended[0]['suspended']}"
+
+    scans = len(runs)
+    tickers = max((r.get("tickers", 0) for r in runs), default=0)
+    candidates = sum(r.get("candidates", 0) for r in runs)
+    finalists = sum(r.get("finalists", 0) for r in runs)
+    alerts = sum(r.get("alerts", 0) for r in runs)
+    best = max((r.get("best_score", 0) for r in runs), default=0)
+    seuil = config.ALERT_RULES["min_final_score"]
+
+    health = (f"🩺 Santé du jour : {scans} scan(s), {tickers} tickers analysés, "
+              f"{candidates} candidats, {finalists} étudiés par les IA.")
+    if alerts == 0:
+        if tickers == 0:
+            health += ("\n⚠️ 0 ticker analysé — possible souci de données (Yahoo). "
+                       "À surveiller.")
+        elif finalists == 0:
+            health += ("\n✅ Aucun setup assez propre aujourd'hui pour mériter une analyse IA. "
+                       "Pas d'alerte = NORMAL.")
+        else:
+            health += (f"\n✅ Meilleur score du jour : {best:.0f}/100 (seuil {seuil}). "
+                       "En dessous du seuil → pas d'alerte. NORMAL.")
+    else:
+        health += f"\n🔔 {alerts} alerte(s) envoyée(s) aujourd'hui."
+    return health
 
 
 def send_daily_report(date: str, signals: list[dict], perf: dict, adjustments: str = "") -> None:
@@ -80,6 +131,9 @@ def handle_command(text: str) -> str:
     if cmd == "/bilan":
         return _week_summary()
 
+    if cmd == "/diag":
+        return build_health_block()
+
     if cmd == "/paper":
         return _paper_recap()
 
@@ -98,6 +152,7 @@ def handle_command(text: str) -> str:
         return ("👋 Agent boursier connecté.\n"
                 "Commandes :\n"
                 "/paper — récap du portefeuille virtuel (1000 €/trade)\n"
+                "/diag — santé du jour (scans, candidats, meilleur score)\n"
                 "/stats — poids des IA\n"
                 "/status — état du système\n"
                 "/bilan — signaux du jour\n"
