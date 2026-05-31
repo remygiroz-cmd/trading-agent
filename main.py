@@ -226,6 +226,43 @@ def debate_out_weights():
 # CLI
 # ─────────────────────────────────────────────────────────────
 
+def run_selftest() -> None:
+    """Vérifie l'environnement (clés, Supabase, Telegram) — utile pour valider le cloud."""
+    checks = config.validate_config()
+    present = [k for k, v in checks.items() if v]
+    missing = [k for k, v in checks.items() if not v]
+    logger.info("Clés présentes : %s", ", ".join(present) or "aucune")
+    if missing:
+        logger.warning("Clés manquantes : %s", ", ".join(missing))
+
+    db_ok = False
+    try:
+        from memory import database
+        db_ok = database.ping()
+    except Exception as e:  # noqa: BLE001
+        logger.error("Supabase : %s", e)
+    logger.info("Supabase : %s", "OK" if db_ok else "ÉCHEC")
+
+    market = "n/d"
+    try:
+        import market_filter
+        market = market_filter.get_market_status()["reason"]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Marché : %s", e)
+
+    try:
+        from alerts import telegram_bot
+        telegram_bot.send_message(
+            "🤖 Selftest cloud OK\n"
+            f"• Clés : {len(present)}/8 présentes\n"
+            f"• Supabase : {'OK' if db_ok else 'ÉCHEC'}\n"
+            f"• Marché : {market}"
+        )
+        logger.info("Message Telegram envoyé.")
+    except Exception as e:  # noqa: BLE001
+        logger.error("Telegram : %s", e)
+
+
 def main(argv: list[str]):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("data_fetcher").setLevel(logging.WARNING)
@@ -254,6 +291,8 @@ def main(argv: list[str]):
         # Dispatcher horaire (appelé par GitHub Actions / cron externe)
         import scheduler
         print(scheduler.run_due())
+    elif cmd == "selftest":
+        run_selftest()
     else:
         print(__doc__)
 

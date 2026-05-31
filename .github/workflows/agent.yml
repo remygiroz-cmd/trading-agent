@@ -21,7 +21,13 @@ on:
     - cron: "15 21 * * 1-5"   # 22:15
     - cron: "30 21 * * 1-5"   # 22:30 bilan
     - cron: "0 7 * * 1"       # 08:00 lundi
-  workflow_dispatch: {}        # déclenchement manuel possible depuis l'onglet Actions
+  workflow_dispatch:           # déclenchement manuel depuis l'onglet Actions
+    inputs:
+      command:
+        description: "Commande à lancer (selftest, cron, test-cycle, scan)"
+        required: false
+        default: "selftest"
+        type: string
 
 jobs:
   cron:
@@ -44,4 +50,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
-        run: python main.py cron
+        run: python main.py ${{ github.event.inputs.command || 'cron' }}
