@@ -1,0 +1,47 @@
+name: Agent boursier — scans planifiés
+
+# Déclenchements aux horaires des scans (config.SCAN_SCHEDULE, Europe/Paris).
+# GitHub Actions utilise l'heure UTC et ne gère pas l'heure d'été : on déclare
+# donc les deux décalages (été UTC+2 / hiver UTC+1). Le dispatcher main.py cron
+# n'exécute la tâche QUE si l'heure de Paris correspond à un créneau prévu — les
+# déclenchements de la "mauvaise" saison sont des no-op instantanés.
+on:
+  schedule:
+    # ── Été (CEST, UTC+2) ──
+    - cron: "35 7 * * 1-5"    # 09:35 ouverture
+    - cron: "30 11 * * 1-5"   # 13:30 mi-journée
+    - cron: "35 15 * * 1-5"   # 17:35 clôture EU
+    - cron: "15 20 * * 1-5"   # 22:15 clôture US
+    - cron: "30 20 * * 1-5"   # 22:30 bilan quotidien
+    - cron: "0 6 * * 1"       # 08:00 lundi : tâches hebdo
+    # ── Hiver (CET, UTC+1) ──
+    - cron: "35 8 * * 1-5"    # 09:35
+    - cron: "30 12 * * 1-5"   # 13:30
+    - cron: "35 16 * * 1-5"   # 17:35
+    - cron: "15 21 * * 1-5"   # 22:15
+    - cron: "30 21 * * 1-5"   # 22:30 bilan
+    - cron: "0 7 * * 1"       # 08:00 lundi
+  workflow_dispatch: {}        # déclenchement manuel possible depuis l'onglet Actions
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+      - name: Dispatcher horaire
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: python main.py cron

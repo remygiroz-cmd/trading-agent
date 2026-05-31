@@ -2,19 +2,17 @@
 yfinance>=0.2.40
 pandas>=2.0.0
 numpy>=1.24.0
+
+# HTTP : sert à la fois aux données, à Supabase (client REST PostgREST maison),
+# aux 3 IA (DeepSeek/Grok/Claude) et à Telegram. Aucun SDK lourd.
 requests>=2.31.0
 
-# Base de données : client REST PostgREST maison (memory/database.py) basé sur
-# requests. Le SDK `supabase` n'est PAS utilisé (dépendance native pyiceberg
-# incompatible Python 3.14). requests suffit.
-
-# Telegram
-python-telegram-bot>=21.0
-
-# Utilitaires
+# Chargement du .env en local (en prod, vraies variables d'environnement)
 python-dotenv>=1.0.0
-pytz>=2024.1
 
-# Note : ta-lib n'est pas listé volontairement.
-# Les indicateurs (RSI, MACD, moyennes mobiles) sont calculés en pandas pur
-# dans data_fetcher.py pour éviter les problèmes d'installation native (Windows/Edge).
+# NOTES :
+# - Le SDK `supabase` n'est PAS utilisé (dépendance native pyiceberg incompatible
+#   Python 3.14) -> client REST maison dans memory/database.py.
+# - `python-telegram-bot` n'est PAS utilisé -> appels directs à l'API Bot via requests.
+# - `ta-lib` n'est PAS utilisé -> indicateurs (RSI/MACD/MA) calculés en pandas pur.
+# - Le fuseau horaire utilise zoneinfo (stdlib Python 3.9+), pas pytz.

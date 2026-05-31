@@ -1,1 +1,262 @@
-"""main.py — Point d'entrée principal de l'agent. Implémentation Session 7."""
+"""
+main.py — Point d'entrée principal de l'agent de surveillance boursière.
+
+Cycle complet d'un scan :
+  1. Filtre marché global (SPX/VIX) — sinon scan suspendu
+  2. Watchlist (fixe + dynamique) filtrée par marché, hors blacklist
+  3. Pré-filtre algorithmique -> candidats
+  4. Détection des figures + score de qualité (>= 30/50 -> finaliste)
+  5. Débat 3 IA -> vote final pondéré
+  6. Si alerte (>=75/100 et >=2 ACHETER) : enregistrement en base + alerte Telegram
+     + position paper trading
+
+Utilisation :
+  python main.py scan [label]        # lance un scan (label : ouverture/midi/...)
+  python main.py report              # envoie le bilan quotidien
+  python main.py rebuild-watchlist   # reconstruit la watchlist dynamique
+  python main.py test-cycle          # cycle complet en mode simulation (sans alerte réelle)
+"""
+
+import sys
+import logging
+
+import config
+import data_fetcher
+import market_filter
+import watchlist
+import prefilter
+import patterns
+import paper_trading
+from agents import debate, context_builder
+
+logger = logging.getLogger("main")
+
+
+# ─────────────────────────────────────────────────────────────
+# ASSEMBLAGE D'UN SIGNAL À PARTIR DU DÉBAT
+# ─────────────────────────────────────────────────────────────
+
+def _f(val, default=None):
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
+                    debate_out: dict, timeframe: str = "1d", is_paper: bool = True) -> dict:
+    """Construit l'enregistrement de signal + les champs d'affichage de l'alerte."""
+    votes = debate_out["final_votes"]
+    ds, gk, cl = votes.get("deepseek", {}), votes.get("grok", {}), votes.get("claude", {})
+    result = debate_out["result"]
+
+    price = snapshot.get("price")
+    # Objectif / stop : priorité à DeepSeek (technique), fallback raisonnable
+    target = _f(ds.get("objectif_prix")) or (round(price * 1.12, 2) if price else None)
+    stop = _f(ds.get("stop_loss")) or (round(price * 0.95, 2) if price else None)
+    horizon = int(_f(ds.get("horizon_jours"), 10) or 10)
+    max_pos = int(_f(cl.get("taille_position_max_pct"), 5) or 5)
+
+    upside = ((target - price) / price * 100) if (price and target) else 0.0
+    downside = ((price - stop) / price * 100) if (price and stop) else 0.0
+
+    # Enregistrement base (colonnes trading_signals)
+    record = {
+        "ticker": ticker,
+        "pattern_name": pattern.get("pattern"),
+        "timeframe": timeframe,
+        "entry_price": price,
+        "target_price": target,
+        "stop_loss": stop,
+        "setup_score": int(pattern.get("setup_score", 0)),
+        "final_score": int(result["final_score"]),
+        "buy_votes": result["buy_votes"],
+        "horizon_days": horizon,
+        "is_paper": is_paper,
+    }
+
+    # Champs d'affichage de l'alerte
+    display = {
+        **record,
+        "price": price, "target": target, "stop": stop,
+        "upside": upside, "downside": downside, "max_position_pct": max_pos,
+        "deepseek_verdict": ds.get("verdict", "?"), "deepseek_score": ds.get("score", "?"),
+        "grok_verdict": gk.get("verdict", "?"), "grok_score": gk.get("score", "?"),
+        "claude_verdict": cl.get("verdict", "?"), "claude_score": cl.get("score", "?"),
+        "deepseek_reason": ds.get("raison_principale", ""),
+        "grok_reason": gk.get("raison_principale", ""),
+        "claude_reason": cl.get("raison_principale", ""),
+        "claude_warning": cl.get("risque_macro") or cl.get("risque_fondamental"),
+    }
+    return {"record": record, "display": display}
+
+
+def persist_and_alert(assembled: dict, debate_out: dict, send: bool = True) -> str | None:
+    """Enregistre le signal + les votes en base, puis envoie l'alerte Telegram."""
+    signal_id = None
+    try:
+        from memory import signals as sigmod
+        row = sigmod.insert_signal(assembled["record"])
+        if row:
+            signal_id = row["id"]
+            weights = debate_out.get("weights", {})
+            for tour_name, tour_votes in [("round1", debate_out.get("round1")),
+                                          ("round2", debate_out.get("round2"))]:
+                if not tour_votes:
+                    continue
+                tour_num = 1 if tour_name == "round1" else 2
+                for agent, vote in tour_votes.items():
+                    sigmod.insert_vote(signal_id, agent, tour_num, vote, weights.get(agent))
+    except Exception as e:  # noqa: BLE001
+        logger.error("Persistance signal échouée : %s", e)
+
+    if send:
+        try:
+            from alerts import telegram_bot, daily_report
+            mode = daily_report.get_alert_mode()
+            if mode == "pause":
+                logger.info("Mode pause — alerte non envoyée (%s).", assembled["record"]["ticker"])
+            else:
+                telegram_bot.send_alert(assembled["display"], signal_id=signal_id)
+        except Exception as e:  # noqa: BLE001
+            logger.error("Envoi alerte échoué : %s", e)
+
+    return signal_id
+
+
+# ─────────────────────────────────────────────────────────────
+# CYCLE DE SCAN
+# ─────────────────────────────────────────────────────────────
+
+def run_scan(label: str = "manuel", markets: list[str] | None = None,
+             send_alerts: bool = True, max_finalists: int | None = None) -> dict:
+    """Exécute un cycle de scan complet. Retourne un résumé."""
+    markets = markets or ["EU", "US"]
+    logging.info("===== SCAN '%s' (marchés %s) =====", label, markets)
+
+    summary = {"label": label, "candidates": 0, "finalists": 0, "alerts": 0, "details": []}
+
+    # 1. Filtre marché
+    def notifier(msg):
+        try:
+            from alerts import telegram_bot
+            telegram_bot.send_message(msg)
+        except Exception:  # noqa: BLE001
+            pass
+
+    market = market_filter.get_market_status()
+    if not market["ok"]:
+        logger.warning("Scan suspendu : %s", market["reason"])
+        if send_alerts:
+            notifier(market["reason"])
+        summary["suspended"] = market["reason"]
+        return summary
+
+    # 2. Watchlist filtrée
+    try:
+        from memory import performance
+        blacklist = performance.get_blacklisted_tickers()
+    except Exception:  # noqa: BLE001
+        blacklist = set()
+    full = watchlist.get_full_watchlist(blacklist=blacklist)
+    tickers = watchlist.filter_by_markets(full, markets)
+    logger.info("Watchlist : %s tickers (%s marchés)", len(tickers), markets)
+
+    # 3. Pré-filtre
+    candidates = prefilter.run_prefilter(tickers, batch=True)
+    summary["candidates"] = len(candidates)
+    cand_tickers = [c["ticker"] for c in candidates]
+    logger.info("Pré-filtre : %s candidats", len(cand_tickers))
+    if not cand_tickers:
+        return summary
+
+    # 4. Figures + débat sur les finalistes
+    data = data_fetcher.fetch_batch(cand_tickers, period="200d", interval="1d")
+    paper = paper_trading.is_paper_active()
+    ai_weights = debate_out_weights()
+
+    finalists = 0
+    for tk in cand_tickers:
+        df = data.get(tk)
+        if df is None or df.empty:
+            continue
+        df = data_fetcher.add_indicators(df)
+        snap = data_fetcher.latest_snapshot(df)
+        scan = patterns.scan_ticker(df, {"price": snap.get("price"), "ma50": snap.get("ma50")},
+                                    market["bullish"])
+        best = scan["best"]
+        if not best or best.get("setup_score", 0) < config.ALERT_RULES["min_setup_score"]:
+            continue
+
+        finalists += 1
+        if max_finalists and finalists > max_finalists:
+            logger.info("Plafond finalistes atteint (%s)", max_finalists)
+            break
+
+        logger.info("Finaliste %s : %s (%.1f/50) -> débat", tk, best["pattern"], best["setup_score"])
+        ctx = context_builder.build_context(tk, snap, best, market)
+        debate_out = debate.run_debate(ctx, weights=ai_weights)
+
+        res = debate_out["result"]
+        detail = {"ticker": tk, "pattern": best["pattern"],
+                  "setup_score": best["setup_score"], "final_score": res["final_score"],
+                  "buy_votes": res["buy_votes"], "alert": res["send_alert"]}
+        summary["details"].append(detail)
+
+        if res["send_alert"]:
+            assembled = assemble_signal(tk, snap, best, debate_out, is_paper=paper)
+            persist_and_alert(assembled, debate_out, send=send_alerts)
+            summary["alerts"] += 1
+
+    summary["finalists"] = finalists
+    logger.info("Scan terminé : %s candidats, %s finalistes, %s alertes",
+                summary["candidates"], finalists, summary["alerts"])
+    return summary
+
+
+def debate_out_weights():
+    try:
+        from memory import weights
+        return weights.get_current_weights()
+    except Exception:  # noqa: BLE001
+        return dict(config.INITIAL_WEIGHTS)
+
+
+# ─────────────────────────────────────────────────────────────
+# CLI
+# ─────────────────────────────────────────────────────────────
+
+def main(argv: list[str]):
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("data_fetcher").setLevel(logging.WARNING)
+
+    cmd = argv[0] if argv else "scan"
+
+    if cmd == "scan":
+        label = argv[1] if len(argv) > 1 else "manuel"
+        run_scan(label=label)
+    elif cmd == "test-cycle":
+        # cycle complet sans envoi d'alerte, plafonné pour limiter le coût IA
+        s = run_scan(label="test", send_alerts=False, max_finalists=2)
+        print("\nRésumé test-cycle :", s)
+    elif cmd == "rebuild-watchlist":
+        try:
+            from memory import performance
+            bl = performance.get_blacklisted_tickers()
+        except Exception:  # noqa: BLE001
+            bl = set()
+        n = watchlist.rebuild_dynamic_watchlist(blacklist=bl)
+        print(f"Watchlist dynamique reconstruite : {len(n)} tickers")
+    elif cmd == "report":
+        from scheduler import send_daily_report_now
+        send_daily_report_now()
+    elif cmd == "cron":
+        # Dispatcher horaire (appelé par GitHub Actions / cron externe)
+        import scheduler
+        print(scheduler.run_due())
+    else:
+        print(__doc__)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
