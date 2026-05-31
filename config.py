@@ -9,7 +9,10 @@ import os
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    # override=True : le .env du projet prime sur d'éventuelles variables d'env
+    # ambiantes (ex. ANTHROPIC_API_KEY déjà posée par l'environnement de dev).
+    # En production il n'y a pas de .env -> les vraies variables d'env sont utilisées.
+    load_dotenv(override=True)
 except ImportError:
     # dotenv optionnel : en production les variables sont déjà dans l'environnement
     pass
@@ -114,6 +117,38 @@ INITIAL_WEIGHTS = {
 
 WEIGHT_MIN = 0.15
 WEIGHT_MAX = 0.55
+
+
+# ─────────────────────────────────────────────────────────────
+# ENDPOINTS ET MODÈLES DES IA
+# ─────────────────────────────────────────────────────────────
+
+AI_CONFIG = {
+    "deepseek": {
+        "url": "https://api.deepseek.com/chat/completions",
+        "model": "deepseek-chat",
+        "api_key": DEEPSEEK_API_KEY,
+    },
+    "grok": {
+        "url": "https://api.x.ai/v1/chat/completions",
+        "model": "grok-3",
+        "api_key": GROK_API_KEY,
+        "live_search": True,   # Grok peut chercher sur X/actus en temps réel
+    },
+    "claude": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "model": "claude-sonnet-4-6",
+        "api_key": ANTHROPIC_API_KEY,
+        "anthropic_version": "2023-06-01",
+    },
+}
+
+AI_REQUEST = {
+    "timeout": 60,          # secondes
+    "max_tokens": 1024,
+    "temperature": 0.4,
+    "max_retries": 2,
+}
 
 
 # ─────────────────────────────────────────────────────────────
