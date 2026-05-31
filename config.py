@@ -171,8 +171,13 @@ PAPER_TRADING_CONFIG = {
     "enabled": True,
     "virtual_capital": 10000,
     "max_position_pct": 0.05,
+    "fixed_position_eur": 1000,   # on simule 1000 € investis sur CHAQUE signal
     "start_date": None,
+    "duration_days": 30,
 }
+
+# Webhook Google Sheets (Apps Script). Vide = export désactivé.
+GOOGLE_SHEETS_WEBHOOK_URL = os.getenv("GOOGLE_SHEETS_WEBHOOK_URL", "")
 
 
 # ─────────────────────────────────────────────────────────────

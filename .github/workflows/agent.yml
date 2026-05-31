@@ -21,6 +21,8 @@ on:
     - cron: "15 21 * * 1-5"   # 22:15
     - cron: "30 21 * * 1-5"   # 22:30 bilan
     - cron: "0 7 * * 1"       # 08:00 lundi
+    # ── Relève des commandes Telegram (/paper, boutons…) toutes les 30 min ──
+    - cron: "*/30 6-21 * * 1-5"
   workflow_dispatch:           # déclenchement manuel depuis l'onglet Actions
     inputs:
       command:
@@ -38,9 +40,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
       - name: Installer les dépendances
         run: pip install -r requirements.txt
-      - name: Dispatcher horaire
+      - name: Exécuter (scan ou relève des commandes selon le déclencheur)
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
@@ -50,4 +53,14 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
-        run: python main.py ${{ github.event.inputs.command || 'cron' }}
+          GOOGLE_SHEETS_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEETS_WEBHOOK_URL }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CMD="${{ github.event.inputs.command }}"
+          elif [ "${{ github.event.schedule }}" = "*/30 6-21 * * 1-5" ]; then
+            CMD="poll"
+          else
+            CMD="cron"
+          fi
+          echo "Commande : $CMD"
+          python main.py "${CMD:-cron}"

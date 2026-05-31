@@ -110,6 +110,15 @@ def persist_and_alert(assembled: dict, debate_out: dict, send: bool = True) -> s
     except Exception as e:  # noqa: BLE001
         logger.error("Persistance signal échouée : %s", e)
 
+    # Export Google Sheets (si configuré)
+    if signal_id:
+        try:
+            from alerts import sheets
+            row = dict(assembled["record"], id=signal_id)
+            sheets.export_signal(row)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Export Sheets échoué : %s", e)
+
     if send:
         try:
             from alerts import telegram_bot, daily_report
@@ -291,6 +300,11 @@ def main(argv: list[str]):
         # Dispatcher horaire (appelé par GitHub Actions / cron externe)
         import scheduler
         print(scheduler.run_due())
+    elif cmd == "poll":
+        # Traite uniquement les commandes/clics Telegram en attente (pas de scan)
+        from alerts import daily_report
+        n = daily_report.poll_and_respond()
+        print(f"{n} commande(s)/clic(s) traités")
     elif cmd == "selftest":
         run_selftest()
     else:

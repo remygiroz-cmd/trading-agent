@@ -62,6 +62,18 @@ def send_daily_report_now() -> None:
     except Exception as e:  # noqa: BLE001
         logger.warning("Apprentissage quotidien échoué : %s", e)
 
+    # 1bis. Synchronisation Google Sheets (résultats mis à jour)
+    try:
+        from alerts import sheets
+        if sheets.enabled():
+            sigs_all = signals.get_today_signals()  # + récents ouverts
+            from memory import database
+            recent = (database.table("trading_signals").select("*")
+                      .order("created_at", desc=True).limit(100).execute()).data or []
+            sheets.sync_signals(recent)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Sync Sheets échouée : %s", e)
+
     # 2. Bilan Telegram
     today = now_paris().date().isoformat()
     sigs = signals.get_today_signals(today)
@@ -107,34 +119,63 @@ def run_due(tolerance_min: int = 8) -> dict:
     l'instant présent (à `tolerance_min` minutes près). Conçu pour être appelé
     par un cron (GitHub Actions, etc.) aux horaires prévus.
     """
+    # Toujours traiter les commandes/clics Telegram en attente (même le week-end)
+    try:
+        from alerts import daily_report
+        daily_report.poll_and_respond()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("poll_and_respond échoué : %s", e)
+
     n = now_paris()
     if not is_trading_day(n.date()):
-        logger.info("Jour non ouvré — rien à faire.")
+        logger.info("Jour non ouvré — commandes traitées, pas de scan.")
         return {"skipped": "week-end"}
 
     nowmin = n.hour * 60 + n.minute
+    today = n.date().isoformat()
 
     def near(hhmm: str) -> bool:
         h, m = map(int, hhmm.split(":"))
         return abs(nowmin - (h * 60 + m)) <= tolerance_min
 
+    def already_done(task: str) -> bool:
+        try:
+            from memory import state
+            runs = state.get_state("last_runs", default={}) or {}
+            return task in runs.get(today, [])
+        except Exception:  # noqa: BLE001
+            return False
+
+    def mark_done(task: str) -> None:
+        try:
+            from memory import state
+            runs = state.get_state("last_runs", default={}) or {}
+            runs = {today: list(set(runs.get(today, []) + [task]))}  # ne garde qu'aujourd'hui
+            state.set_state("last_runs", runs)
+        except Exception:  # noqa: BLE001
+            pass
+
     # Tâches hebdo (lundi matin)
-    if n.weekday() == 0 and near(config.WATCHLIST_REBUILD_TIME):
+    if n.weekday() == 0 and near(config.WATCHLIST_REBUILD_TIME) and not already_done("weekly"):
+        mark_done("weekly")
         trigger_weekly_tasks()
         return {"ran": "weekly"}
 
     # Bilan quotidien
-    if near(config.DAILY_REPORT_TIME):
+    if near(config.DAILY_REPORT_TIME) and not already_done("report"):
+        mark_done("report")
         send_daily_report_now()
         return {"ran": "report"}
 
     # Scans
     for s in config.SCAN_SCHEDULE:
-        if near(s["time"]):
+        task = "scan_" + s["label"]
+        if near(s["time"]) and not already_done(task):
+            mark_done(task)
             return {"ran": "scan", "label": s["label"],
                     "result": trigger_scan(s["label"], s["markets"])}
 
-    logger.info("Aucune tâche planifiée à %s (Paris).", n.strftime("%H:%M"))
+    logger.info("Aucune tâche planifiée à %s (Paris) — commandes traitées.", n.strftime("%H:%M"))
     return {"ran": None}
 
 

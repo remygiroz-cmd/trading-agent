@@ -4,6 +4,8 @@ alerts/daily_report.py — Bilan quotidien (22h30) et commandes Telegram.
 - format_daily_report : synthèse des signaux du jour + performance + ajustements
 - handle_command : traite les commandes (/pause, /actif, /digest, /bilan, /stats, /status)
 - handle_callback : traite les clics boutons (Pris / Ignoré / Surveille)
+- poll_and_respond : draine les messages/clics en attente et répond (appelé à
+  chaque exécution cron + dans la boucle continue)
 """
 
 import logging
@@ -78,32 +80,108 @@ def handle_command(text: str) -> str:
     if cmd == "/bilan":
         return _week_summary()
 
-    if cmd == "/start":
-        return ("👋 Agent boursier connecté.\n"
-                "Commandes : /status /stats /bilan /pause /actif /digest")
+    if cmd == "/paper":
+        return _paper_recap()
 
-    return "Commande inconnue. Essaie /status, /stats, /bilan, /pause, /actif."
+    if cmd == "/stop_paper":
+        return _stop_paper()
+
+    if cmd == "/reprendre_paper":
+        try:
+            import paper_trading
+            paper_trading.resume_paper()
+            return "▶️ Paper trading réactivé."
+        except Exception as e:  # noqa: BLE001
+            return f"Erreur : {e}"
+
+    if cmd in ("/start", "/help"):
+        return ("👋 Agent boursier connecté.\n"
+                "Commandes :\n"
+                "/paper — récap du portefeuille virtuel (1000 €/trade)\n"
+                "/stats — poids des IA\n"
+                "/status — état du système\n"
+                "/bilan — signaux du jour\n"
+                "/pause /actif /digest — mode d'alerte\n"
+                "/stop_paper — arrêter le paper trading (passage réel)")
+
+    return "Commande inconnue. Tape /help."
+
+
+def _load_offset() -> int | None:
+    from memory import state
+    return (state.get_state("telegram_offset", default={}) or {}).get("offset")
+
+
+def _save_offset(offset: int) -> None:
+    from memory import state
+    state.set_state("telegram_offset", {"offset": offset})
+
+
+def poll_and_respond(timeout: int = 0) -> int:
+    """
+    Draine les updates Telegram en attente : commandes texte + clics boutons.
+    Mémorise l'offset pour ne traiter chaque update qu'une fois.
+    Retourne le nombre d'updates traités.
+    """
+    offset = _load_offset()
+    updates = telegram_bot.get_updates(offset=offset, timeout=timeout)
+    handled = 0
+    for u in updates:
+        _save_offset(u["update_id"] + 1)
+        try:
+            cq = u.get("callback_query")
+            if cq:
+                reply = handle_callback(cq.get("data", ""))
+                telegram_bot.answer_callback(cq["id"], reply)
+                telegram_bot.send_message(reply)
+                handled += 1
+                continue
+            msg = u.get("message") or u.get("edited_message") or {}
+            text = msg.get("text", "")
+            if text:
+                reply = handle_command(text)
+                telegram_bot.send_message(reply)
+                handled += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Traitement update échoué : %s", e)
+    if handled:
+        logger.info("%s commande(s)/clic(s) Telegram traités", handled)
+    return handled
+
+
+def _paper_recap() -> str:
+    try:
+        import paper_trading
+        p = paper_trading.compute_portfolio(live=True)
+        return paper_trading.format_portfolio(p)
+    except Exception as e:  # noqa: BLE001
+        return f"Récap paper indisponible : {e}"
+
+
+def _stop_paper() -> str:
+    try:
+        import paper_trading
+        p = paper_trading.compute_portfolio(live=True)
+        paper_trading.stop_paper()
+        return ("🛑 Paper trading ARRÊTÉ.\n"
+                f"Bilan final : {p['pnl_eur']:+.0f} € sur {p['n_closed']} trades clôturés "
+                f"({p['win_rate']*100:.0f}% de réussite).\n"
+                "Les prochaines alertes seront en mode RÉEL (is_paper=false).\n"
+                "Pour revenir en arrière : /reprendre_paper")
+    except Exception as e:  # noqa: BLE001
+        return f"Erreur arrêt paper : {e}"
 
 
 def _set_mode(cmd: str) -> None:
-    """Persiste le mode d'alerte dans un petit fichier d'état local."""
-    import json, os
+    """Persiste le mode d'alerte dans l'état (Supabase)."""
     mode = {"/pause": "pause", "/actif": "actif", "/digest": "digest"}[cmd]
-    os.makedirs("data_cache", exist_ok=True)
-    with open("data_cache/alert_mode.json", "w", encoding="utf-8") as f:
-        json.dump({"mode": mode}, f)
+    from memory import state
+    state.set_state("alert_mode", {"mode": mode})
 
 
 def get_alert_mode() -> str:
-    import json, os
-    path = "data_cache/alert_mode.json"
-    if not os.path.exists(path):
-        return "actif"
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f).get("mode", "actif")
-    except Exception:  # noqa: BLE001
-        return "actif"
+    from memory import state
+    return (state.get_state("alert_mode", default={}) or {}).get("mode", "actif")
 
 
 def _status_message() -> str:

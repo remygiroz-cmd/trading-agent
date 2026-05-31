@@ -82,23 +82,40 @@ def get_fixed_watchlist() -> list[str]:
 # ─────────────────────────────────────────────────────────────
 
 def load_dynamic_watchlist() -> list[str]:
-    """Charge la watchlist dynamique depuis le cache local. Vide si absente."""
-    if not os.path.exists(DYNAMIC_CACHE):
-        return []
+    """
+    Charge la watchlist dynamique depuis l'état persistant (Supabase, repli fichier).
+    Vide si jamais reconstruite.
+    """
     try:
-        with open(DYNAMIC_CACHE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("tickers", [])
+        from memory import state
+        data = state.get_state("dynamic_watchlist", default={})
+        if data and data.get("tickers"):
+            return data["tickers"]
     except Exception as e:  # noqa: BLE001
-        logger.warning("Lecture cache watchlist dynamique échouée : %s", e)
-        return []
+        logger.warning("Lecture watchlist dynamique (état) échouée : %s", e)
+
+    # Repli : ancien cache fichier
+    if os.path.exists(DYNAMIC_CACHE):
+        try:
+            with open(DYNAMIC_CACHE, "r", encoding="utf-8") as f:
+                return json.load(f).get("tickers", [])
+        except Exception:  # noqa: BLE001
+            pass
+    return []
 
 
 def save_dynamic_watchlist(tickers: list[str]) -> None:
-    """Persiste la watchlist dynamique dans le cache local."""
+    """Persiste la watchlist dynamique dans l'état (Supabase) + cache fichier local."""
+    payload = {"tickers": tickers, "count": len(tickers)}
+    try:
+        from memory import state
+        state.set_state("dynamic_watchlist", payload)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Sauvegarde watchlist (état) échouée : %s", e)
+
     os.makedirs(CACHE_DIR, exist_ok=True)
     with open(DYNAMIC_CACHE, "w", encoding="utf-8") as f:
-        json.dump({"tickers": tickers, "count": len(tickers)}, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     logger.info("Watchlist dynamique sauvegardée : %s tickers", len(tickers))
 
 
