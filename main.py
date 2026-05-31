@@ -141,6 +141,9 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
              send_alerts: bool = True, max_finalists: int | None = None) -> dict:
     """Exécute un cycle de scan complet. Retourne un résumé."""
     markets = markets or ["EU", "US"]
+    # Plafond de débats IA par scan (coût + temps d'exécution borné)
+    if max_finalists is None:
+        max_finalists = config.ALERT_RULES.get("max_finalists_per_scan", 8)
     logging.info("===== SCAN '%s' (marchés %s) =====", label, markets)
 
     summary = {"label": label, "candidates": 0, "finalists": 0, "alerts": 0, "details": []}
@@ -167,6 +170,16 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         blacklist = performance.get_blacklisted_tickers()
     except Exception:  # noqa: BLE001
         blacklist = set()
+
+    # Sécurité : si la watchlist dynamique est vide (1er run, ou rebuild du lundi
+    # raté/retardé par GitHub), on la reconstruit avant de scanner.
+    if not watchlist.load_dynamic_watchlist():
+        logger.warning("Watchlist dynamique vide — reconstruction de secours.")
+        try:
+            watchlist.rebuild_dynamic_watchlist(blacklist=blacklist)
+        except Exception as e:  # noqa: BLE001
+            logger.error("Reconstruction de secours échouée : %s", e)
+
     full = watchlist.get_full_watchlist(blacklist=blacklist)
     tickers = watchlist.filter_by_markets(full, markets)
     logger.info("Watchlist : %s tickers (%s marchés)", len(tickers), markets)

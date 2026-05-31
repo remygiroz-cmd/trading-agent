@@ -68,7 +68,6 @@ def send_daily_report_now() -> None:
     try:
         from alerts import sheets
         if sheets.enabled():
-            sigs_all = signals.get_today_signals()  # + récents ouverts
             from memory import database
             recent = (database.table("trading_signals").select("*")
                       .order("created_at", desc=True).limit(100).execute()).data or []

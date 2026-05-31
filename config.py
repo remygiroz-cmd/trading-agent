@@ -160,6 +160,10 @@ ALERT_RULES = {
     "min_final_score": 75,       # /100 — seuil pour envoyer une alerte
     "min_buy_votes": 2,          # minimum 2 IA sur 3 votent ACHETER
     "high_conviction_score": 85, # /100 — alerte ✅ vs ⚡
+    # Plafond de débats IA par scan : borne le coût et le temps d'exécution
+    # (un run GitHub Actions est limité à 20 min). Les finalistes sont déjà triés
+    # par qualité (meilleurs en premier).
+    "max_finalists_per_scan": 8,
 }
 
 
