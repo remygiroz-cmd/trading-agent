@@ -153,6 +153,49 @@ def fetch_many(tickers, period: str = "90d", interval: str = "1d", pause: float 
     return out
 
 
+def fetch_batch(tickers, period: str = "90d", interval: str = "1d", chunk_size: int = 50) -> dict:
+    """
+    Télécharge plusieurs tickers en une seule requête groupée (rapide).
+    Découpe en lots de `chunk_size` pour éviter les requêtes trop lourdes.
+    Retourne {ticker: DataFrame normalisé}. Les tickers en échec ont un DataFrame vide.
+    """
+    import yfinance as yf
+
+    out = {}
+    tickers = list(tickers)
+    for i in range(0, len(tickers), chunk_size):
+        chunk = tickers[i:i + chunk_size]
+        try:
+            raw = yf.download(
+                chunk,
+                period=period,
+                interval=interval,
+                auto_adjust=False,
+                progress=False,
+                threads=True,
+                group_by="ticker",
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Batch échec %s : %s", chunk, e)
+            for t in chunk:
+                out[t] = pd.DataFrame()
+            continue
+
+        for t in chunk:
+            try:
+                if isinstance(raw.columns, pd.MultiIndex) and t in raw.columns.get_level_values(0):
+                    sub = raw[t].copy()
+                elif len(chunk) == 1:
+                    sub = raw.copy()
+                else:
+                    sub = pd.DataFrame()
+                out[t] = _normalize_df(sub)
+            except Exception:  # noqa: BLE001
+                out[t] = pd.DataFrame()
+
+    return out
+
+
 def fetch_current_price(ticker: str) -> float | None:
     """Dernier prix de clôture disponible (daily récent)."""
     df = fetch_ticker(ticker, period="5d", interval="1d")

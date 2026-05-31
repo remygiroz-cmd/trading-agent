@@ -75,6 +75,12 @@ PREFILTER_CRITERIA = {
     "min_avg_volume": 100000,        # Volume moyen > 100k actions/jour
 }
 
+# Plafond du nombre de candidats transmis à la détection de figures + IA.
+# La watchlist dynamique étant déjà issue d'un screener momentum, le pré-filtre
+# peut retourner beaucoup de candidats les jours de forte hausse. On borne donc
+# au top-N (tri par qualité momentum) pour maîtriser le coût des appels IA.
+PREFILTER_MAX_CANDIDATES = 40
+
 
 # ─────────────────────────────────────────────────────────────
 # TIMEFRAMES ET HISTORIQUE
