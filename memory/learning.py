@@ -1,0 +1,173 @@
+"""
+memory/learning.py — Boucle d'apprentissage cumulative.
+
+- update_open_signal_results : remplit J+1/J+3/J+7, marque stop/objectif atteints
+- update_ticker_performance_all : agrège les stats par ticker
+- generate_learned_rules : déduit des règles fiables depuis l'historique
+- run_daily_learning / run_weekly_learning : orchestrations appelées par le scheduler
+
+Aucune suppression : on n'insère et ne met à jour que (règle métier 8).
+"""
+
+import logging
+import datetime as dt
+
+import data_fetcher
+from . import database, signals, performance, weights
+
+logger = logging.getLogger("learning")
+
+
+# ─────────────────────────────────────────────────────────────
+# MISE À JOUR DES RÉSULTATS (quotidien, 22h30)
+# ─────────────────────────────────────────────────────────────
+
+def _parse_dt(s: str) -> dt.datetime:
+    try:
+        return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return dt.datetime.now(dt.timezone.utc)
+
+
+def update_open_signal_results(now: dt.datetime | None = None) -> dict:
+    """Met à jour les signaux ouverts avec le prix actuel. Retourne un résumé."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    open_signals = signals.get_open_signals()
+    updated, stops, targets = 0, 0, 0
+
+    # Récupération groupée des prix
+    tickers = list({s["ticker"] for s in open_signals})
+    prices = {}
+    if tickers:
+        data = data_fetcher.fetch_batch(tickers, period="5d", interval="1d")
+        for tk, df in data.items():
+            if df is not None and not df.empty:
+                prices[tk] = float(df["close"].iloc[-1])
+
+    for s in open_signals:
+        price = prices.get(s["ticker"])
+        if price is None:
+            continue
+        entry = float(s["entry_price"])
+        if entry <= 0:
+            continue
+        result = (price - entry) / entry
+        days = (now - _parse_dt(s["created_at"])).days
+        signals.update_signal_result(s["id"], days, result)
+        updated += 1
+
+        if s.get("stop_loss") and price <= float(s["stop_loss"]):
+            signals.mark_stop_reached(s["id"])
+            stops += 1
+        if s.get("target_price") and price >= float(s["target_price"]):
+            signals.mark_target_reached(s["id"])
+            targets += 1
+
+    logger.info("Résultats MAJ : %s signaux, %s stops, %s objectifs", updated, stops, targets)
+    return {"updated": updated, "stops": stops, "targets": targets}
+
+
+# ─────────────────────────────────────────────────────────────
+# PERFORMANCE PAR TICKER
+# ─────────────────────────────────────────────────────────────
+
+def update_ticker_performance_all() -> int:
+    """Recalcule les agrégats par ticker depuis les signaux clos (result_7d connu)."""
+    rows = (database.table("trading_signals")
+            .select("ticker, result_7d")
+            .execute()).data or []
+
+    by_ticker: dict[str, list[float]] = {}
+    for r in rows:
+        if r.get("result_7d") is not None:
+            by_ticker.setdefault(r["ticker"], []).append(float(r["result_7d"]))
+
+    for ticker, results in by_ticker.items():
+        total = len(results)
+        correct = sum(1 for x in results if x > 0)
+        gains = [x for x in results if x > 0]
+        losses = [x for x in results if x <= 0]
+        performance.upsert_ticker_performance(ticker, {
+            "total_signals": total,
+            "correct_signals": correct,
+            "win_rate": round(correct / total, 3) if total else 0,
+            "avg_gain": round(sum(gains) / len(gains), 4) if gains else 0,
+            "avg_loss": round(sum(losses) / len(losses), 4) if losses else 0,
+        })
+    logger.info("Perf ticker recalculée pour %s tickers", len(by_ticker))
+    return len(by_ticker)
+
+
+# ─────────────────────────────────────────────────────────────
+# GÉNÉRATION DE RÈGLES APPRISES
+# ─────────────────────────────────────────────────────────────
+
+def generate_learned_rules(min_sample: int = 8) -> list[dict]:
+    """
+    Déduit des règles depuis l'historique clos :
+      - par figure chartiste (taux de réussite)
+      - par tranche de score final (>=85 vs 75-84)
+    N'insère une règle que si l'échantillon est suffisant et le signal net.
+    """
+    rows = (database.table("trading_signals")
+            .select("pattern_name, final_score, result_7d")
+            .execute()).data or []
+    closed = [r for r in rows if r.get("result_7d") is not None]
+    if len(closed) < min_sample:
+        logger.info("Pas assez de signaux clos (%s) pour générer des règles.", len(closed))
+        return []
+
+    created = []
+
+    # Règles par figure
+    by_pattern: dict[str, list[float]] = {}
+    for r in closed:
+        by_pattern.setdefault(r["pattern_name"], []).append(float(r["result_7d"]))
+    for pattern, res in by_pattern.items():
+        if len(res) < min_sample:
+            continue
+        wr = sum(1 for x in res if x > 0) / len(res)
+        if wr >= 0.65:
+            rule = performance.add_learned_rule(
+                f"La figure {pattern} réussit dans {wr*100:.0f}% des cas",
+                "pattern", wr, len(res))
+            if rule:
+                created.append(rule)
+        elif wr <= 0.35:
+            rule = performance.add_learned_rule(
+                f"Méfiance : la figure {pattern} échoue souvent ({(1-wr)*100:.0f}% de pertes)",
+                "pattern", 1 - wr, len(res))
+            if rule:
+                created.append(rule)
+
+    # Règle haute conviction
+    high = [float(r["result_7d"]) for r in closed if (r.get("final_score") or 0) >= 85]
+    if len(high) >= min_sample:
+        wr = sum(1 for x in high if x > 0) / len(high)
+        if wr >= 0.65:
+            rule = performance.add_learned_rule(
+                f"Les signaux à score >= 85/100 réussissent à {wr*100:.0f}%",
+                "timing", wr, len(high))
+            if rule:
+                created.append(rule)
+
+    logger.info("Règles apprises générées : %s", len(created))
+    return created
+
+
+# ─────────────────────────────────────────────────────────────
+# ORCHESTRATIONS
+# ─────────────────────────────────────────────────────────────
+
+def run_daily_learning() -> dict:
+    """Quotidien (22h30) : MAJ résultats + perf ticker."""
+    res = update_open_signal_results()
+    update_ticker_performance_all()
+    return res
+
+
+def run_weekly_learning() -> dict:
+    """Hebdo (lundi) : règles apprises + recalcul des poids des IA."""
+    rules = generate_learned_rules()
+    new_weights = weights.recalculate_ai_weights()
+    return {"rules_created": len(rules), "weights": new_weights}

@@ -48,32 +48,45 @@ def trigger_scan(label: str, markets: list[str]) -> dict:
 
 
 def send_daily_report_now() -> None:
-    """Bilan quotidien (22h30)."""
+    """Bilan quotidien (22h30) : MAJ des résultats + apprentissage + envoi du bilan."""
     from alerts import daily_report
     from memory import signals, weights
+
+    # 1. Boucle d'apprentissage quotidienne (résultats J+1/3/7, perf ticker)
+    adjustments = "(aucun)"
+    try:
+        from memory import learning
+        res = learning.run_daily_learning()
+        adjustments = (f"{res['updated']} signaux mis à jour, "
+                       f"{res['targets']} objectifs atteints, {res['stops']} stops touchés.")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Apprentissage quotidien échoué : %s", e)
+
+    # 2. Bilan Telegram
     today = now_paris().date().isoformat()
     sigs = signals.get_today_signals(today)
     w = weights.get_current_weights()
     best_agent = max(w, key=w.get) if w else "n/d"
     perf = {"week_win_rate": _week_win_rate(), "best_agent": best_agent}
-    daily_report.send_daily_report(today, sigs, perf,
-                                   adjustments="(ajustements auto en Session 8)")
+    daily_report.send_daily_report(today, sigs, perf, adjustments=adjustments)
 
 
 def trigger_weekly_tasks() -> None:
-    """Tâches du lundi matin : reconstruction watchlist + recalcul poids."""
+    """Tâches du lundi matin : watchlist dynamique + règles apprises + recalcul poids."""
     try:
-        from memory import performance, weights
+        from memory import performance
         bl = performance.get_blacklisted_tickers()
     except Exception:  # noqa: BLE001
         bl = set()
     import watchlist
     watchlist.rebuild_dynamic_watchlist(blacklist=bl)
     try:
-        from memory import weights
-        weights.recalculate_ai_weights()
+        from memory import learning
+        res = learning.run_weekly_learning()
+        logger.info("Hebdo : %s règles créées, poids %s",
+                    res["rules_created"], res["weights"])
     except Exception as e:  # noqa: BLE001
-        logger.warning("Recalcul poids échoué : %s", e)
+        logger.warning("Apprentissage hebdo échoué : %s", e)
 
 
 def _week_win_rate() -> float:
