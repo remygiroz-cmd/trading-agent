@@ -116,7 +116,7 @@ def compute_portfolio(live: bool = False) -> dict:
     live_prices = {}
 
     if live:
-        opens = [r["ticker"] for r in rows if _latest_result(r)[0] is None]
+        opens = [r["ticker"] for r in rows if not r.get("closed")]
         if opens:
             try:
                 import data_fetcher
@@ -128,28 +128,35 @@ def compute_portfolio(live: bool = False) -> dict:
                 pass
 
     for r in rows:
-        res, horizon = _latest_result(r)
-        if res is None and live and r["ticker"] in live_prices and r.get("entry_price"):
-            entry = float(r["entry_price"])
-            if entry > 0:
-                res = (live_prices[r["ticker"]] - entry) / entry
-                horizon = "live"
-        pnl = stake * res if res is not None else None
-        positions.append({
-            "ticker": r["ticker"], "pattern": r["pattern_name"],
-            "entry": r.get("entry_price"), "result": res, "horizon": horizon,
-            "pnl_eur": round(pnl, 2) if pnl is not None else None,
-            "date": r.get("created_at", "")[:10],
-        })
-        if res is None:
-            open_count += 1
-        else:
+        if r.get("closed"):
+            # position vendue (simulée) : on prend le résultat réalisé
+            res = float(r["realized_pct"]) if r.get("realized_pct") is not None else 0.0
+            pnl = float(r["realized_pnl_eur"]) if r.get("realized_pnl_eur") is not None else stake * res
+            horizon = r.get("exit_reason", "clôturé")
             closed_pnl += pnl
             invested_closed += stake
             if res > 0:
                 wins += 1
             else:
                 losses += 1
+        else:
+            # position encore ouverte : P&L latent (prix live ou dernier résultat connu)
+            res, horizon = _latest_result(r)
+            if res is None and live and r["ticker"] in live_prices and r.get("entry_price"):
+                entry = float(r["entry_price"])
+                if entry > 0:
+                    res = (live_prices[r["ticker"]] - entry) / entry
+                    horizon = "live"
+            pnl = stake * res if res is not None else None
+            open_count += 1
+
+        positions.append({
+            "ticker": r["ticker"], "pattern": r["pattern_name"],
+            "entry": r.get("entry_price"), "result": res, "horizon": horizon,
+            "pnl_eur": round(pnl, 2) if pnl is not None else None,
+            "closed": bool(r.get("closed")),
+            "date": r.get("created_at", "")[:10],
+        })
 
     closed = wins + losses
     return {

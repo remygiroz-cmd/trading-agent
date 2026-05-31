@@ -68,6 +68,103 @@ def update_open_signal_results(now: dt.datetime | None = None) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────
+# CLÔTURE SIMULÉE DES POSITIONS (vente paper trading)
+# ─────────────────────────────────────────────────────────────
+
+def _simulate_exit(sig: dict, bars, now: dt.datetime):
+    """
+    Détermine la sortie d'une position en parcourant les bougies jour après jour
+    depuis l'entrée :
+      - si le plus haut touche l'objectif -> sortie à l'objectif
+      - sinon si le plus bas touche le stop -> sortie au stop
+      - sinon, à la fin de l'horizon -> sortie à la clôture
+    Si l'objectif ET le stop sont touchés le même jour, on retient le STOP
+    (hypothèse prudente, on ne connaît pas l'ordre intra-journalier).
+
+    Retourne dict de clôture, ou None si la position est encore ouverte.
+    """
+    import pandas as pd
+
+    entry = float(sig["entry_price"])
+    if entry <= 0 or bars is None or bars.empty:
+        return None
+    target = float(sig["target_price"]) if sig.get("target_price") else None
+    stop = float(sig["stop_loss"]) if sig.get("stop_loss") else None
+    horizon = int(sig.get("horizon_days") or 10)
+
+    created = _parse_dt(sig["created_at"])
+    # bougies postérieures à l'entrée
+    bars = bars[bars.index > pd.Timestamp(created).tz_localize(None)]
+    if bars.empty:
+        return None
+
+    for i, (ts, row) in enumerate(bars.iterrows(), start=1):
+        hi, lo, close = float(row["high"]), float(row["low"]), float(row["close"])
+        # stop prioritaire si les deux sont touchés le même jour (prudence)
+        if stop and lo <= stop:
+            return _close(sig, stop, ts, "stop", entry, i)
+        if target and hi >= target:
+            return _close(sig, target, ts, "objectif", entry, i)
+        if i >= horizon:
+            return _close(sig, close, ts, "horizon", entry, i)
+
+    # horizon non encore atteint et ni stop ni objectif touchés -> encore ouverte
+    elapsed = (now - created).days
+    if elapsed >= horizon:
+        # horizon dépassé mais pas assez de bougies (week-ends/jours fériés) :
+        # clôture à la dernière bougie disponible
+        last_ts = bars.index[-1]
+        return _close(sig, float(bars.iloc[-1]["close"]), last_ts, "horizon", entry, len(bars))
+    return None
+
+
+def _close(sig, exit_price, ts, reason, entry, hold_days) -> dict:
+    pct = (exit_price - entry) / entry
+    from config import PAPER_TRADING_CONFIG
+    stake = PAPER_TRADING_CONFIG["fixed_position_eur"]
+    return {
+        "closed": True,
+        "exit_price": round(exit_price, 4),
+        "exit_date": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+        "exit_reason": reason,
+        "realized_pct": round(pct, 4),
+        "realized_pnl_eur": round(stake * pct, 2),
+        "hold_days": hold_days,
+    }
+
+
+def close_due_paper_trades(now: dt.datetime | None = None) -> dict:
+    """
+    Clôture les positions paper dont l'objectif/stop a été touché ou l'horizon
+    écoulé. Met à jour les colonnes de clôture en base. Retourne un résumé.
+    """
+    now = now or dt.datetime.now(dt.timezone.utc)
+    rows = (database.table("trading_signals")
+            .select("*").eq("is_paper", True).execute()).data or []
+    open_rows = [r for r in rows if not r.get("closed")]
+    if not open_rows:
+        return {"closed": 0}
+
+    tickers = list({r["ticker"] for r in open_rows})
+    bars_by_ticker = data_fetcher.fetch_batch(tickers, period="60d", interval="1d")
+
+    closed, by_reason = 0, {"objectif": 0, "stop": 0, "horizon": 0}
+    for r in open_rows:
+        bars = bars_by_ticker.get(r["ticker"])
+        result = _simulate_exit(r, bars, now)
+        if result:
+            try:
+                database.table("trading_signals").update(result).eq("id", r["id"]).execute()
+                closed += 1
+                by_reason[result["exit_reason"]] = by_reason.get(result["exit_reason"], 0) + 1
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Clôture %s échouée : %s", r["ticker"], e)
+
+    logger.info("Positions clôturées : %s (%s)", closed, by_reason)
+    return {"closed": closed, "by_reason": by_reason}
+
+
+# ─────────────────────────────────────────────────────────────
 # PERFORMANCE PAR TICKER
 # ─────────────────────────────────────────────────────────────
 
@@ -160,9 +257,11 @@ def generate_learned_rules(min_sample: int = 8) -> list[dict]:
 # ─────────────────────────────────────────────────────────────
 
 def run_daily_learning() -> dict:
-    """Quotidien (22h30) : MAJ résultats + perf ticker."""
+    """Quotidien (22h30) : MAJ résultats + clôtures simulées + perf ticker."""
     res = update_open_signal_results()
+    closures = close_due_paper_trades()
     update_ticker_performance_all()
+    res["closures"] = closures
     return res
 
 

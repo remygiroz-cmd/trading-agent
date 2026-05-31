@@ -17,9 +17,10 @@
  */
 
 var HEADERS = [
-  "id", "date", "ticker", "figure", "score", "entree", "objectif", "stop",
-  "mise_eur", "result_1d", "result_3d", "result_7d", "pnl_eur",
-  "objectif_atteint", "stop_atteint", "action_remy", "paper"
+  "id", "date_entree", "ticker", "figure", "score", "prix_entree", "objectif",
+  "stop", "horizon_j", "mise_eur", "statut", "raison_sortie", "prix_sortie",
+  "date_sortie", "jours_detenus", "resultat_pct", "plus_value_eur",
+  "action_remy", "paper"
 ];
 
 function doPost(e) {

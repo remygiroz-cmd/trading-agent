@@ -57,8 +57,10 @@ def send_daily_report_now() -> None:
     try:
         from memory import learning
         res = learning.run_daily_learning()
+        cl = res.get("closures", {})
         adjustments = (f"{res['updated']} signaux mis à jour, "
-                       f"{res['targets']} objectifs atteints, {res['stops']} stops touchés.")
+                       f"{cl.get('closed', 0)} position(s) vendue(s) "
+                       f"{cl.get('by_reason', {})}.")
     except Exception as e:  # noqa: BLE001
         logger.warning("Apprentissage quotidien échoué : %s", e)
 

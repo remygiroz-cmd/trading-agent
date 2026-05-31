@@ -25,24 +25,39 @@ def enabled() -> bool:
 def _row_from_signal(sig: dict) -> dict:
     """Transforme un signal (base) en ligne pour la feuille."""
     stake = config.PAPER_TRADING_CONFIG["fixed_position_eur"]
-    res7 = sig.get("result_7d")
-    pnl = (stake * float(res7)) if res7 is not None else ""
+    closed = bool(sig.get("closed"))
+
+    if closed:
+        statut = "clôturé"
+        pct = sig.get("realized_pct", "")
+        pnl = sig.get("realized_pnl_eur", "")
+    else:
+        statut = "en cours"
+        # résultat latent connu (J+7 > J+3 > J+1)
+        pct = next((sig[f] for f in ("result_7d", "result_3d", "result_1d")
+                    if sig.get(f) is not None), "")
+        pnl = round(stake * float(pct), 2) if pct != "" else ""
+
+    pct_aff = round(float(pct) * 100, 2) if pct != "" else ""
+
     return {
         "id": sig.get("id", ""),
-        "date": (sig.get("created_at") or "")[:16].replace("T", " "),
+        "date_entree": (sig.get("created_at") or "")[:16].replace("T", " "),
         "ticker": sig.get("ticker", ""),
         "figure": sig.get("pattern_name", ""),
         "score": sig.get("final_score", ""),
-        "entree": sig.get("entry_price", ""),
+        "prix_entree": sig.get("entry_price", ""),
         "objectif": sig.get("target_price", ""),
         "stop": sig.get("stop_loss", ""),
+        "horizon_j": sig.get("horizon_days", ""),
         "mise_eur": stake,
-        "result_1d": sig.get("result_1d", ""),
-        "result_3d": sig.get("result_3d", ""),
-        "result_7d": res7 if res7 is not None else "",
-        "pnl_eur": round(pnl, 2) if pnl != "" else "",
-        "objectif_atteint": sig.get("target_reached", False),
-        "stop_atteint": sig.get("stop_reached", False),
+        "statut": statut,
+        "raison_sortie": sig.get("exit_reason", ""),
+        "prix_sortie": sig.get("exit_price", ""),
+        "date_sortie": (sig.get("exit_date") or "")[:16].replace("T", " "),
+        "jours_detenus": sig.get("hold_days", ""),
+        "resultat_pct": pct_aff,
+        "plus_value_eur": pnl,
         "action_remy": sig.get("user_action", ""),
         "paper": sig.get("is_paper", True),
     }
