@@ -4,8 +4,9 @@ pandas>=2.0.0
 numpy>=1.24.0
 requests>=2.31.0
 
-# Base de données
-supabase>=2.4.0
+# Base de données : client REST PostgREST maison (memory/database.py) basé sur
+# requests. Le SDK `supabase` n'est PAS utilisé (dépendance native pyiceberg
+# incompatible Python 3.14). requests suffit.
 
 # Telegram
 python-telegram-bot>=21.0
