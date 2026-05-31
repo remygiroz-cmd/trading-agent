@@ -1,0 +1,19 @@
+# Données marché
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.31.0
+
+# Base de données
+supabase>=2.4.0
+
+# Telegram
+python-telegram-bot>=21.0
+
+# Utilitaires
+python-dotenv>=1.0.0
+pytz>=2024.1
+
+# Note : ta-lib n'est pas listé volontairement.
+# Les indicateurs (RSI, MACD, moyennes mobiles) sont calculés en pandas pur
+# dans data_fetcher.py pour éviter les problèmes d'installation native (Windows/Edge).
