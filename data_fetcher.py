@@ -131,11 +131,31 @@ def fetch_polygon(ticker: str, period: str = "90d", interval: str = "1d") -> pd.
         return pd.DataFrame()
 
 
+def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    """Ré-échantillonne un DataFrame OHLCV vers une fréquence supérieure (ex. '4h')."""
+    if df.empty:
+        return df
+    agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    agg = {k: v for k, v in agg.items() if k in df.columns}
+    out = df.resample(rule).agg(agg).dropna(subset=["close"])
+    return out
+
+
 def fetch_ticker(ticker: str, period: str = "90d", interval: str = "1d") -> pd.DataFrame:
     """
     Point d'entrée principal. Tente Yahoo, bascule sur Polygon si échec.
     Retourne un DataFrame normalisé (potentiellement vide).
+
+    Yahoo ne fournit pas d'intervalle '4h' : on récupère le '1h' puis on
+    ré-échantillonne en 4h.
     """
+    if interval == "4h":
+        # 1h limité à ~730j chez Yahoo ; on borne la période demandée.
+        h1 = fetch_yahoo(ticker, period=period, interval="1h")
+        if h1.empty:
+            return pd.DataFrame()
+        return _resample_ohlcv(h1, "4h")
+
     df = fetch_yahoo(ticker, period=period, interval=interval)
     if df.empty:
         logger.info("Bascule Polygon pour %s", ticker)
