@@ -146,9 +146,13 @@ def run_due(tolerance_min: int = 8) -> dict:
     nowmin = n.hour * 60 + n.minute
     today = n.date().isoformat()
 
-    def near(hhmm: str) -> bool:
+    # Logique de RATTRAPAGE : GitHub Actions déclenche souvent ses crons en retard
+    # (ou les saute). Une tâche est "due" dès qu'on dépasse son heure prévue, dans
+    # une fenêtre de rattrapage (et tant qu'elle n'a pas déjà tourné aujourd'hui).
+    def due(hhmm: str, window_min: int) -> bool:
         h, m = map(int, hhmm.split(":"))
-        return abs(nowmin - (h * 60 + m)) <= tolerance_min
+        delta = nowmin - (h * 60 + m)
+        return 0 <= delta <= window_min
 
     def already_done(task: str) -> bool:
         try:
@@ -167,41 +171,41 @@ def run_due(tolerance_min: int = 8) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
-    # Radar buzz : récaps avant ouverture EU / US (pendant l'essai)
+    # Radar buzz : récaps avant ouverture EU / US (fenêtre de rattrapage 2h)
     try:
         if config.BUZZ["enabled"]:
             import buzz
             bst = buzz._get_state()
             trial_ok = (not bst.get("start_date")) or not buzz.is_expired(n.date())
             if trial_ok and not bst.get("recap_sent"):
-                if near(config.BUZZ["eu_time"]) and not already_done("buzz_EU"):
-                    mark_done("buzz_EU"); buzz.run_digest("EU", n.date())
-                if near(config.BUZZ["us_time"]) and not already_done("buzz_US"):
-                    mark_done("buzz_US"); buzz.run_digest("US", n.date())
+                if due(config.BUZZ["eu_time"], 120) and not already_done("buzz_EU"):
+                    buzz.run_digest("EU", n.date()); mark_done("buzz_EU")
+                if due(config.BUZZ["us_time"], 120) and not already_done("buzz_US"):
+                    buzz.run_digest("US", n.date()); mark_done("buzz_US")
     except Exception as e:  # noqa: BLE001
         logger.warning("Récap buzz quotidien échoué : %s", e)
 
-    # Tâches hebdo (lundi matin)
-    if n.weekday() == 0 and near(config.WATCHLIST_REBUILD_TIME) and not already_done("weekly"):
-        mark_done("weekly")
+    # Tâches hebdo (lundi matin) — rattrapage 4h
+    if n.weekday() == 0 and due(config.WATCHLIST_REBUILD_TIME, 240) and not already_done("weekly"):
         trigger_weekly_tasks()
+        mark_done("weekly")
         return {"ran": "weekly"}
 
-    # Bilan quotidien
-    if near(config.DAILY_REPORT_TIME) and not already_done("report"):
-        mark_done("report")
+    # Bilan quotidien — rattrapage 90 min
+    if due(config.DAILY_REPORT_TIME, 90) and not already_done("report"):
         send_daily_report_now()
+        mark_done("report")
         return {"ran": "report"}
 
-    # Scans
+    # Scans — rattrapage 2h30 (un scan plus tardif vaut mieux que pas de scan)
     for s in config.SCAN_SCHEDULE:
         task = "scan_" + s["label"]
-        if near(s["time"]) and not already_done(task):
-            mark_done(task)
+        if due(s["time"], 150) and not already_done(task):
+            mark_done(task)   # marqué avant : un scan est lourd, on évite les doublons concurrents
             return {"ran": "scan", "label": s["label"],
                     "result": trigger_scan(s["label"], s["markets"])}
 
-    logger.info("Aucune tâche planifiée à %s (Paris) — commandes traitées.", n.strftime("%H:%M"))
+    logger.info("Aucune tâche due à %s (Paris) — commandes traitées.", n.strftime("%H:%M"))
     return {"ran": None}
 
 

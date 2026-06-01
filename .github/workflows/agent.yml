@@ -62,8 +62,6 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             CMD="${{ github.event.inputs.command }}"
-          elif [ "${{ github.event.schedule }}" = "*/30 6-21 * * 1-5" ]; then
-            CMD="poll"
           else
             CMD="cron"
           fi
