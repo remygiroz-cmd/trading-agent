@@ -185,6 +185,20 @@ def run_due(tolerance_min: int = 8) -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("Récap buzz quotidien échoué : %s", e)
 
+    # Auto-réglage des sorties — ~1x/mois, en semaine, fenêtre de rattrapage 3h.
+    # Gros calcul (watchlist complète sur 2 ans) : on l'isole des autres tâches
+    # lourdes et on le gate par intervalle (autotune.due) pour ne pas le rejouer.
+    if config.AUTOTUNE["enabled"] and due(config.AUTOTUNE["time"], 180) \
+            and not already_done("autotune"):
+        try:
+            import autotune
+            if autotune.due(n.date()):
+                mark_done("autotune")  # marqué avant : calcul long, on évite les doublons
+                res = autotune.run_autotune()
+                return {"ran": "autotune", "result": res}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Auto-tuning échoué : %s", e)
+
     # Tâches hebdo (lundi matin) — rattrapage 4h
     if n.weekday() == 0 and due(config.WATCHLIST_REBUILD_TIME, 240) and not already_done("weekly"):
         trigger_weekly_tasks()

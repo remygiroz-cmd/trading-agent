@@ -157,6 +157,24 @@ RISK = {
 
 
 # ─────────────────────────────────────────────────────────────
+# AUTO-RÉGLAGE DES SORTIES (boucle fermée objectif/stop/horizon)
+# Ré-optimisation walk-forward périodique ; l'agent applique tout seul le
+# meilleur réglage validé en TEST (cf. autotune.py). Garde-fous inclus.
+# ─────────────────────────────────────────────────────────────
+AUTOTUNE = {
+    "enabled": True,
+    "time": "07:30",            # heure de lancement (matin, avant les scans)
+    "min_interval_days": 28,    # ~1x/mois (gros calcul : watchlist complète sur 2 ans)
+    "years": 2,                 # profondeur d'historique pour le backtest
+    "min_signals": 60,          # en deçà, on ne touche à rien (pas assez de preuve)
+    "min_winrate": 55.0,        # critère cible : réussite TEST >= 55%
+    "min_avg_win": 10.0,        # critère cible : gain moyen des gagnants >= 10%
+    "min_test_winrate": 50.0,   # garde-fou : réussite TEST mini pour appliquer
+    "min_improvement_pp": 0.5,  # garde-fou : marge d'espérance vs réglage actif (points de %)
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # POIDS INITIAUX DES IA
 # ─────────────────────────────────────────────────────────────
 

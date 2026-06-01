@@ -15,6 +15,7 @@ Utilisation :
   python main.py report              # envoie le bilan quotidien
   python main.py rebuild-watchlist   # reconstruit la watchlist dynamique
   python main.py test-cycle          # cycle complet en mode simulation (sans alerte réelle)
+  python main.py autotune [--apply]  # ré-optimise objectifs/stops/horizon (auto-réglage)
 """
 
 import sys
@@ -379,6 +380,16 @@ def main(argv: list[str]):
             buzz.send_recap()
         else:
             print(buzz.run_digest(sub.upper()))
+    elif cmd == "autotune":
+        # python main.py autotune [annees] [--apply]
+        import autotune
+        yrs = next((int(a) for a in argv[1:] if a.isdigit()), None)
+        apply = "--apply" in argv
+        out = autotune.run_autotune(years=yrs, apply=apply, notify=apply)
+        for k, v in out.items():
+            print(f"{k}: {v}")
+        if not apply:
+            print("(simulation — ajoute --apply pour écrire le réglage)")
     elif cmd == "selftest":
         run_selftest()
     else:

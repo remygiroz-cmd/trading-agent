@@ -60,26 +60,80 @@ def passes_relative_strength(stock_df: pd.DataFrame, market_df: pd.DataFrame) ->
 # NIVEAUX DE SORTIE ADAPTÉS À LA VOLATILITÉ (ATR)
 # ─────────────────────────────────────────────────────────────
 
+# Cache process : le réglage actif (config.RISK + override appris) est lu une
+# seule fois par exécution. Un scan GitHub Actions est court-lived, donc pas de
+# risque de servir un réglage périmé.
+_active_risk_cache: dict | None = None
+
+
+def get_active_risk(force_reload: bool = False) -> dict:
+    """
+    Réglage de risque ACTIF = config.RISK fusionné avec l'override appris par
+    l'auto-tuning (clé d'état 'risk_override', s'il existe). Permet à l'agent
+    d'ajuster tout seul objectifs/stops/horizon sans toucher au code.
+
+    L'override est un dict partiel ; les clés absentes retombent sur config.RISK.
+    Fail-safe : toute erreur d'accès à l'état -> on garde config.RISK.
+    """
+    global _active_risk_cache
+    if _active_risk_cache is not None and not force_reload:
+        return _active_risk_cache
+
+    r = dict(config.RISK)
+    try:
+        from memory import state
+        override = state.get_state("risk_override", default=None)
+        if isinstance(override, dict):
+            params = override.get("params", override)  # tolère {params: {...}} ou plat
+            if isinstance(params, dict):
+                r.update(params)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("get_active_risk : override illisible (%s) — config par défaut", str(e)[:80])
+
+    _active_risk_cache = r
+    return r
+
+
+def _leg_pct(kind: str, value: float, atr_pct: float | None, fallback_pct: float) -> float:
+    """Pourcentage d'une jambe (objectif/stop) selon son mode ('atr' ou 'pct')."""
+    if kind == "atr":
+        return value * atr_pct if (atr_pct and atr_pct > 0) else fallback_pct
+    return value  # 'pct'
+
+
 def compute_levels(entry: float, atr_pct: float | None) -> dict:
     """
     Calcule objectif / stop / horizon à partir de la volatilité (ATR).
     Stop calé sur l'ATR (borné), bien plus efficace que des % fixes sur les
     valeurs nerveuses (cf. backtest). Repli en % fixes si ATR absent.
+
+    Supporte deux formes de réglage :
+      - jambes indépendantes (auto-tuning) : target_kind/target_value +
+        stop_kind/stop_value (chacune 'atr' ou 'pct') ;
+      - forme historique : mode 'atr' (atr_*_mult) ou 'fixed' (fixed_*_pct).
     """
-    r = config.RISK
-    if r["mode"] == "atr" and atr_pct and atr_pct > 0:
-        stop_pct = min(max(r["atr_stop_mult"] * atr_pct, r["min_stop_pct"]), r["max_stop_pct"])
-        target_pct = min(r["atr_target_mult"] * atr_pct, r["max_target_pct"])
+    r = get_active_risk()
+
+    if "target_kind" in r and "stop_kind" in r:
+        target_pct = _leg_pct(r["target_kind"], r["target_value"], atr_pct, r.get("fixed_target_pct", 0.12))
+        stop_pct = _leg_pct(r["stop_kind"], r["stop_value"], atr_pct, r.get("fixed_stop_pct", 0.06))
+    elif r["mode"] == "atr" and atr_pct and atr_pct > 0:
+        stop_pct = r["atr_stop_mult"] * atr_pct
+        target_pct = r["atr_target_mult"] * atr_pct
     else:
         stop_pct = r["fixed_stop_pct"]
         target_pct = r["fixed_target_pct"]
+
+    # Bornes de sécurité (communes à tous les modes)
+    stop_pct = min(max(stop_pct, r["min_stop_pct"]), r["max_stop_pct"])
+    target_pct = min(target_pct, r["max_target_pct"])
 
     return {
         "stop": round(entry * (1 - stop_pct), 4),
         "target": round(entry * (1 + target_pct), 4),
         "stop_pct": round(stop_pct, 4),
         "target_pct": round(target_pct, 4),
-        "horizon": r["default_horizon"],
+        "horizon": int(r["default_horizon"]),
     }
 
 

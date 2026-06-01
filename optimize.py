@@ -74,7 +74,14 @@ def metrics(results):
     }
 
 
-def main(years=2):
+def build_signals(years=2):
+    """
+    Reconstruit les signaux du backtest (figures techniques sur l'historique de
+    la watchlist) et les sépare en apprentissage / test (walk-forward).
+
+    Retourne (train, test, cutoff) où chaque élément est une liste de tuples
+    (df, i, entry, atr, date). Réutilisable par optimize.main et autotune.
+    """
     tickers = watchlist.get_full_watchlist()
     spx = data_fetcher.fetch_ticker("^GSPC", period=f"{years+1}y", interval="1d")
     regime, spx_by_date = {}, {}
@@ -92,25 +99,48 @@ def main(years=2):
         for (i, e, a) in sigs:
             signals.append((d2, i, e, a, d2.index[i]))
     if not signals:
-        print("Aucun signal."); return
+        return [], [], None
 
     dates = sorted(s[4] for s in signals)
     cutoff = dates[len(dates) // 2]
     train = [s for s in signals if s[4] <= cutoff]
     test = [s for s in signals if s[4] > cutoff]
-    print(f"Signaux : {len(signals)} (apprentissage {len(train)} jusqu'au {cutoff.date()}, "
-          f"test {len(test)} après)\n")
+    return train, test, cutoff
 
-    # Évaluer toutes les configs sur train + test
+
+def eval_config(train, test, target_spec, stop_spec, horizon) -> dict | None:
+    """Évalue un réglage (objectif/stop/horizon) sur train + test. Retourne {tr, te}."""
+    tr = metrics([simulate(e, a, df.iloc[i + 1:], target_spec, stop_spec, horizon)
+                  for (df, i, e, a, _) in train])
+    te = metrics([simulate(e, a, df.iloc[i + 1:], target_spec, stop_spec, horizon)
+                  for (df, i, e, a, _) in test])
+    if tr and te:
+        return {"cfg": f"obj {target_spec[0]}{target_spec[1]} / stop {stop_spec[0]}{stop_spec[1]} / {horizon}j",
+                "target": target_spec, "stop": stop_spec, "horizon": horizon,
+                "tr": tr, "te": te}
+    return None
+
+
+def grid(train, test) -> list[dict]:
+    """Évalue toute la grille (~90 réglages) sur train + test."""
     rows = []
     for ts in TARGETS:
         for ss in STOPS:
             for h in HORIZONS:
-                tr = metrics([simulate(e, a, df.iloc[i + 1:], ts, ss, h) for (df, i, e, a, _) in train])
-                te = metrics([simulate(e, a, df.iloc[i + 1:], ts, ss, h) for (df, i, e, a, _) in test])
-                if tr and te:
-                    rows.append({"cfg": f"obj {ts[0]}{ts[1]} / stop {ss[0]}{ss[1]} / {h}j",
-                                 "tr": tr, "te": te})
+                r = eval_config(train, test, ts, ss, h)
+                if r:
+                    rows.append(r)
+    return rows
+
+
+def main(years=2):
+    train, test, cutoff = build_signals(years)
+    if not train and not test:
+        print("Aucun signal."); return
+    print(f"Signaux : {len(train) + len(test)} (apprentissage {len(train)} jusqu'au "
+          f"{cutoff.date()}, test {len(test)} après)\n")
+
+    rows = grid(train, test)
 
     # 1) Meilleure espérance en TEST (robuste)
     rows.sort(key=lambda r: r["te"]["exp"], reverse=True)
