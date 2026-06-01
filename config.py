@@ -175,6 +175,17 @@ AUTOTUNE = {
 
 
 # ─────────────────────────────────────────────────────────────
+# ANALYSE FONDAMENTALE (santé financière de l'entreprise)
+# Données yfinance (gratuit), mises en cache par ticker. Injectées dans le
+# contexte des IA pour étayer la décision (cf. fundamentals.py).
+# ─────────────────────────────────────────────────────────────
+FUNDAMENTALS = {
+    "enabled": True,
+    "cache_days": 5,            # les fondamentaux bougent lentement -> cache 5 jours
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # POIDS INITIAUX DES IA
 # ─────────────────────────────────────────────────────────────
 

@@ -29,6 +29,8 @@ DONNÉES TECHNIQUES :
 - MA20 : {ma20} | MA50 : {ma50}
 - Score setup : {setup_score}/50
 
+FONDAMENTAUX : {fundamentals_score} — {fundamentals_context}
+
 ACTUALITÉS RÉCENTES (mémoire du système) :
 {news_context}
 {news_sentiment}
@@ -97,6 +99,11 @@ SECTEUR : {sector}
 CAPITALISATION : {market_cap}
 FIGURE : {pattern_name}
 SCORE TECHNIQUE : {setup_score}/50
+
+FONDAMENTAUX DE L'ENTREPRISE :
+{fundamentals_score}
+{fundamentals_context}
+{analyst_view}
 
 CONTEXTE MARCHÉ :
 - SPX vs MA50 : {spx_status}

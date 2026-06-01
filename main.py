@@ -388,6 +388,16 @@ def main(argv: list[str]):
         print(f"\n=== ACTUALITÉS {tk} ===")
         print(out["sentiment_text"])
         print(out["text"])
+    elif cmd == "fundamentals":
+        # python main.py fundamentals TICKER — santé financière + consensus
+        import fundamentals
+        tk = argv[1].upper() if len(argv) > 1 else "AAPL"
+        out = fundamentals.fundamentals_context(tk)
+        print(f"\n=== FONDAMENTAUX {tk} ===")
+        print(out["score_text"])
+        print(out["text"])
+        print(out["analyst_view"] if "analyst_view" in out else out["analyst_text"])
+        print(f"Secteur : {out['sector']} — capi {out['market_cap']}")
     elif cmd == "autotune":
         # python main.py autotune [annees] [--apply]
         import autotune

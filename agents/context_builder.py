@@ -39,7 +39,8 @@ def _fmt_perf(perf: dict) -> str:
 
 def build_context(ticker: str, snapshot: dict, pattern: dict, market: dict,
                   company_name: str = "", sector: str = "", market_cap: str = "n/d",
-                  use_memory: bool = True, use_news: bool = True) -> dict:
+                  use_memory: bool = True, use_news: bool = True,
+                  use_fundamentals: bool = True) -> dict:
     """
     Construit le dict de contexte commun aux 3 prompts.
 
@@ -76,6 +77,10 @@ def build_context(ticker: str, snapshot: dict, pattern: dict, market: dict,
         # actualités (RAG)
         "news_context": "Actualités non consultées.",
         "news_sentiment": "Sentiment actualités : n/d.",
+        # fondamentaux
+        "fundamentals_context": "Fondamentaux non consultés.",
+        "fundamentals_score": "Santé fondamentale : n/d.",
+        "analyst_view": "Consensus analystes : n/d.",
     }
 
     if use_memory:
@@ -96,5 +101,20 @@ def build_context(ticker: str, snapshot: dict, pattern: dict, market: dict,
             ctx["news_sentiment"] = nc["sentiment_text"]
         except Exception as e:  # noqa: BLE001
             logger.warning("Actualités indisponibles pour le contexte : %s", e)
+
+    if use_fundamentals:
+        try:
+            import fundamentals
+            fc = fundamentals.fundamentals_context(ticker, price=snapshot.get("price"))
+            ctx["fundamentals_context"] = fc["text"]
+            ctx["fundamentals_score"] = fc["score_text"]
+            ctx["analyst_view"] = fc["analyst_text"]
+            # complète secteur / capi si on ne les avait pas
+            if ctx["sector"] == "n/d" and fc["sector"] != "n/d":
+                ctx["sector"] = fc["sector"]
+            if ctx["market_cap"] == "n/d" and fc["market_cap"] != "n/d":
+                ctx["market_cap"] = fc["market_cap"]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Fondamentaux indisponibles pour le contexte : %s", e)
 
     return ctx
