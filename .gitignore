@@ -19,3 +19,7 @@ data_cache/
 .DS_Store
 .idea/
 .vscode/
+
+# Sorties d analyse
+backtest_results.csv
+discover_features.csv
