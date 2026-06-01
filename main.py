@@ -380,6 +380,14 @@ def main(argv: list[str]):
             buzz.send_recap()
         else:
             print(buzz.run_digest(sub.upper()))
+    elif cmd == "news":
+        # python main.py news TICKER  — affiche la mémoire actualités d'un ticker
+        import news
+        tk = argv[1].upper() if len(argv) > 1 else "AAPL"
+        out = news.news_context(tk)
+        print(f"\n=== ACTUALITÉS {tk} ===")
+        print(out["sentiment_text"])
+        print(out["text"])
     elif cmd == "autotune":
         # python main.py autotune [annees] [--apply]
         import autotune

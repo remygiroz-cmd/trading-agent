@@ -64,6 +64,15 @@ def send_daily_report_now() -> None:
     except Exception as e:  # noqa: BLE001
         logger.warning("Apprentissage quotidien échoué : %s", e)
 
+    # 1ter. Mémoire actualités : ingestion quotidienne de la watchlist dynamique
+    # (la mémoire s'accumule au-delà des seuls finalistes des scans).
+    try:
+        import news, watchlist
+        wl = watchlist.load_dynamic_watchlist() or watchlist.get_full_watchlist()
+        news.refresh_watchlist_news(wl)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Refresh news quotidien échoué : %s", e)
+
     # 1bis. Synchronisation Google Sheets (résultats mis à jour)
     try:
         from alerts import sheets
