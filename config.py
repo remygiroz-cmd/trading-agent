@@ -94,6 +94,20 @@ EARNINGS_FILTER = {
     "buffer_days": 2,             # marge de sécurité autour de la date de résultats
 }
 
+# ─────────────────────────────────────────────────────────────
+# RADAR DE BUZZ (essai) — récap sentiment X/analystes avant ouverture
+# Module SÉPARÉ du système de trading : info sentiment, PAS une reco d'achat.
+# ─────────────────────────────────────────────────────────────
+BUZZ = {
+    "enabled": True,
+    "trial_days": 7,                 # durée de l'essai (jours calendaires)
+    "max_picks": 4,
+    "eu_time": "08:30",              # avant ouverture Euronext (09:00 Paris)
+    "us_time": "15:00",              # avant ouverture US (15:30 Paris)
+    "max_search_results": 10,        # plafond sources (maîtrise du coût)
+    "est_cost_per_digest_usd": 0.30, # estimation coût/récap (recherche + tokens)
+}
+
 # Plafond du nombre de candidats transmis à la détection de figures + IA.
 # La watchlist dynamique étant déjà issue d'un screener momentum, le pré-filtre
 # peut retourner beaucoup de candidats les jours de forte hausse. On borne donc

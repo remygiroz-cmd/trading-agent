@@ -134,6 +134,24 @@ def handle_command(text: str) -> str:
     if cmd == "/diag":
         return build_health_block()
 
+    if cmd in ("/buzz_on", "/buzz_off", "/buzz"):
+        try:
+            import buzz
+            if cmd == "/buzz_on":
+                buzz.restart()
+                return "📡 Radar buzz relancé pour 7 jours."
+            if cmd == "/buzz_off":
+                s = buzz._get_state(); s["active"] = False; s["recap_sent"] = True; buzz._set_state(s)
+                return "🛑 Radar buzz arrêté."
+            # /buzz : état actuel
+            from memory import state as _st
+            log = _st.get_state("buzz_log", default=[]) or []
+            s = buzz._get_state()
+            return (f"📡 Radar buzz : {'actif' if s.get('active') and not s.get('recap_sent') else 'inactif'}\n"
+                    f"Picks enregistrés : {len(log)} depuis {s.get('start_date','n/a')}")
+        except Exception as e:  # noqa: BLE001
+            return f"Erreur buzz : {e}"
+
     if cmd == "/paper":
         return _paper_recap()
 

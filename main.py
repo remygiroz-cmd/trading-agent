@@ -371,6 +371,14 @@ def main(argv: list[str]):
         from alerts import daily_report
         n = daily_report.poll_and_respond()
         print(f"{n} commande(s)/clic(s) traités")
+    elif cmd == "buzz":
+        # python main.py buzz EU|US|recap
+        import buzz
+        sub = argv[1] if len(argv) > 1 else "EU"
+        if sub == "recap":
+            buzz.send_recap()
+        else:
+            print(buzz.run_digest(sub.upper()))
     elif cmd == "selftest":
         run_selftest()
     else:

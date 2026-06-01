@@ -128,6 +128,17 @@ def run_due(tolerance_min: int = 8) -> dict:
         logger.warning("poll_and_respond échoué : %s", e)
 
     n = now_paris()
+
+    # Radar buzz : récap de fin d'essai (peut tomber un week-end) — toujours vérifié
+    try:
+        if config.BUZZ["enabled"]:
+            import buzz
+            st = buzz._get_state()
+            if st.get("active") and not st.get("recap_sent") and buzz.is_expired(n.date()):
+                buzz.send_recap(n.date())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Récap buzz échoué : %s", e)
+
     if not is_trading_day(n.date()):
         logger.info("Jour non ouvré — commandes traitées, pas de scan.")
         return {"skipped": "week-end"}
@@ -155,6 +166,20 @@ def run_due(tolerance_min: int = 8) -> dict:
             state.set_state("last_runs", runs)
         except Exception:  # noqa: BLE001
             pass
+
+    # Radar buzz : récaps avant ouverture EU / US (pendant l'essai)
+    try:
+        if config.BUZZ["enabled"]:
+            import buzz
+            bst = buzz._get_state()
+            trial_ok = (not bst.get("start_date")) or not buzz.is_expired(n.date())
+            if trial_ok and not bst.get("recap_sent"):
+                if near(config.BUZZ["eu_time"]) and not already_done("buzz_EU"):
+                    mark_done("buzz_EU"); buzz.run_digest("EU", n.date())
+                if near(config.BUZZ["us_time"]) and not already_done("buzz_US"):
+                    mark_done("buzz_US"); buzz.run_digest("US", n.date())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Récap buzz quotidien échoué : %s", e)
 
     # Tâches hebdo (lundi matin)
     if n.weekday() == 0 and near(config.WATCHLIST_REBUILD_TIME) and not already_done("weekly"):
