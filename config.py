@@ -104,8 +104,12 @@ BUZZ = {
     "max_picks": 4,
     "eu_time": "08:30",              # avant ouverture Euronext (09:00 Paris)
     "us_time": "15:00",              # avant ouverture US (15:30 Paris)
-    "max_search_results": 10,        # plafond sources (maîtrise du coût)
-    "est_cost_per_digest_usd": 0.30, # estimation coût/récap (recherche + tokens)
+    # Recherche en direct via la nouvelle API xAI "Responses" + outils serveur
+    # (web_search + x_search). L'ancienne Live Search (search_parameters) est dépréciée.
+    "responses_url": "https://api.x.ai/v1/responses",
+    "model": "grok-4.3",             # modèle compatible outils serveur
+    "max_tool_calls": 6,             # plafond d'appels d'outils (maîtrise du coût)
+    "usd_per_tick": 1e-10,           # conversion estimée cost_in_usd_ticks -> USD (à vérifier)
 }
 
 # Plafond du nombre de candidats transmis à la détection de figures + IA.

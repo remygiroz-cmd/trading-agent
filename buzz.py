@@ -12,6 +12,8 @@ simulation intraday (achat ~10 min après ouverture, vente ~10 min avant clôtur
 import logging
 import datetime as dt
 
+import requests
+
 import config
 from agents import base as agent_base
 from alerts import telegram_bot
@@ -80,37 +82,74 @@ def is_expired(today: dt.date) -> bool:
 # RÉCAP QUOTIDIEN (un appel Grok)
 # ─────────────────────────────────────────────────────────────
 
+def _grok_live_search(user_prompt: str):
+    """
+    Appelle la nouvelle API xAI Responses avec recherche en direct (web + X).
+    Retourne (texte, sources[list], cost_ticks). Lève en cas d'échec HTTP.
+    """
+    cfg = config.AI_CONFIG["grok"]
+    body = {
+        "model": config.BUZZ["model"],
+        "input": [{"role": "system", "content": SYSTEM},
+                  {"role": "user", "content": user_prompt}],
+        "tools": [{"type": "web_search"}, {"type": "x_search"}],
+        "max_tool_calls": config.BUZZ["max_tool_calls"],
+    }
+    headers = {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
+    r = requests.post(config.BUZZ["responses_url"], headers=headers, json=body, timeout=120)
+    if r.status_code >= 400:
+        raise RuntimeError(f"xAI Responses {r.status_code}: {r.text[:200]}")
+    d = r.json()
+    text, sources = "", []
+    for item in d.get("output", []):
+        if item.get("type") == "message":
+            for blk in item.get("content", []):
+                text += blk.get("text", "")
+                for a in (blk.get("annotations") or []):
+                    if a.get("url"):
+                        sources.append(a["url"])
+        if str(item.get("type", "")).endswith("search_call"):
+            for s in (item.get("action", {}).get("sources") or []):
+                if s.get("url"):
+                    sources.append(s["url"])
+    cost_ticks = (d.get("usage") or {}).get("cost_in_usd_ticks", 0) or 0
+    # dédup en conservant l'ordre
+    sources = list(dict.fromkeys(sources))
+    return text, sources, cost_ticks
+
+
 def run_digest(session: str, today: dt.date | None = None) -> dict:
     today = today or dt.date.today()
     _start_if_needed(today)
 
     user = PROMPT.format(scope=SCOPE.get(session, "cotées"))
-    extra = {"search_parameters": {
-        "mode": "auto",
-        "sources": [{"type": "x"}, {"type": "news"}, {"type": "web"}],
-        "max_search_results": config.BUZZ["max_search_results"],
-    }}
     try:
-        text = agent_base.call_openai_compatible("grok", SYSTEM, user, extra)
+        text, sources, cost_ticks = _grok_live_search(user)
     except Exception as e:  # noqa: BLE001
-        logger.warning("Grok buzz KO (%s) — appel simple", str(e)[:80])
-        text = agent_base.call_openai_compatible("grok", SYSTEM, user)
+        logger.error("Recherche live Grok échouée : %s", str(e)[:160])
+        telegram_bot.send_message(
+            f"⚠️ Radar buzz {session} indisponible aujourd'hui (recherche live KO). "
+            "Je n'envoie pas de picks plutôt que des picks non sourcés.")
+        return {"session": session, "picks": [], "error": str(e)[:120]}
+
     parsed = agent_base.parse_json_response(text)
     picks = parsed.get("picks", [])[: config.BUZZ["max_picks"]]
 
-    # Journalisation
+    # Journalisation des picks + du coût réel
     log = state.get_state(LOG_KEY, default=[]) or []
     for p in picks:
         log.append({"date": today.isoformat(), "session": session,
                     "ticker": p.get("ticker", ""), "nom": p.get("nom", ""),
                     "raison": p.get("raison", ""), "sentiment": p.get("sentiment")})
     state.set_state(LOG_KEY, log)
+    total_ticks = (state.get_state("buzz_cost_ticks", default=0) or 0) + cost_ticks
+    state.set_state("buzz_cost_ticks", total_ticks)
 
-    _send_digest_message(session, picks, today)
-    return {"session": session, "picks": picks}
+    _send_digest_message(session, picks, today, sources)
+    return {"session": session, "picks": picks, "sources": len(sources)}
 
 
-def _send_digest_message(session: str, picks: list, today: dt.date):
+def _send_digest_message(session: str, picks: list, today: dt.date, sources: list | None = None):
     titre = "🇪🇺 OUVERTURE EUROPE" if session == "EU" else "🇺🇸 OUVERTURE US"
     msg = f"📡 RADAR BUZZ — {titre} ({today.isoformat()})\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -121,7 +160,13 @@ def _send_digest_message(session: str, picks: list, today: dt.date):
             s = p.get("sentiment")
             s_txt = f" ({s}/10)" if s is not None else ""
             msg += f"\n🔥 {p.get('ticker','?')} — {p.get('nom','')}{s_txt}\n   {p.get('raison','')}\n"
-    msg += "\nℹ️ Info sentiment (X/analystes) — PAS une reco d'achat. Essai 7 jours."
+    # Quelques sources X/web pour la transparence
+    x_sources = [s for s in (sources or []) if "x.com" in s or "twitter.com" in s][:2]
+    other = [s for s in (sources or []) if s not in x_sources][:2]
+    show = x_sources + other
+    if show:
+        msg += "\n🔎 Sources : " + " · ".join(show)
+    msg += f"\n\nℹ️ Sentiment live (X+actus, {len(sources or [])} sources) — PAS une reco d'achat. Essai 7 jours."
     telegram_bot.send_message(msg)
 
 
@@ -164,7 +209,8 @@ def send_recap(today: dt.date | None = None):
     today = today or dt.date.today()
     log = state.get_state(LOG_KEY, default=[]) or []
     n_digests = len({(e["date"], e["session"]) for e in log})
-    est_cost = n_digests * config.BUZZ["est_cost_per_digest_usd"]
+    cost_ticks = state.get_state("buzz_cost_ticks", default=0) or 0
+    est_cost = cost_ticks * config.BUZZ["usd_per_tick"]
     stake = 1000
 
     results = []
@@ -221,4 +267,5 @@ def restart():
     state.set_state(STATE_KEY, {"active": True, "start_date": dt.date.today().isoformat(),
                                 "recap_sent": False})
     state.set_state(LOG_KEY, [])
+    state.set_state("buzz_cost_ticks", 0)
     logger.info("Radar buzz relancé.")
