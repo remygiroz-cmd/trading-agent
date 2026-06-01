@@ -37,17 +37,22 @@ WARMUP = 60          # bougies minimum avant de commencer à détecter
 MIN_SETUP = config.ALERT_RULES["min_setup_score"]   # 30/50
 
 
-def _simulate_forward(entry: float, future: pd.DataFrame):
-    """Simule la sortie sur les bougies futures. Retourne (pct, raison, jours)."""
-    target = entry * (1 + TARGET_PCT)
-    stop = entry * (1 - STOP_PCT)
+def _simulate_forward(entry: float, future: pd.DataFrame, atr_pct: float | None = None):
+    """
+    Simule la sortie sur les bougies futures avec les niveaux du système
+    (ATR si dispo, sinon % fixes) — cf. market_context.compute_levels.
+    Retourne (pct, raison, jours).
+    """
+    import market_context
+    lv = market_context.compute_levels(entry, atr_pct)
+    target, stop, horizon = lv["target"], lv["stop"], lv["horizon"]
     for d, (_, row) in enumerate(future.iterrows(), start=1):
         hi, lo, close = float(row["high"]), float(row["low"]), float(row["close"])
         if lo <= stop:                      # stop prioritaire (prudence)
-            return -STOP_PCT, "stop", d
+            return (stop - entry) / entry, "stop", d
         if hi >= target:
-            return TARGET_PCT, "objectif", d
-        if d >= HORIZON:
+            return (target - entry) / entry, "objectif", d
+        if d >= horizon:
             return (close - entry) / entry, "horizon", d
     if len(future):
         last = float(future.iloc[-1]["close"])
@@ -81,6 +86,7 @@ def backtest_ticker(ticker: str, df: pd.DataFrame, regime: dict,
     ma20 = df["ma20"].values
     vol = df["volume"].values
     volavg = df["vol_avg20"].values
+    atrp = df["atr_pct"].values if "atr_pct" in df else [None] * len(df)
 
     n = len(df)
     for i in range(WARMUP, n - 1):
@@ -124,9 +130,10 @@ def backtest_ticker(ticker: str, df: pd.DataFrame, regime: dict,
         if not best or best.get("setup_score", 0) < MIN_SETUP:
             continue
 
-        # Simulation de la sortie sur les bougies futures
+        # Simulation de la sortie sur les bougies futures (niveaux ATR)
         future = df.iloc[i + 1:]
-        sim = _simulate_forward(price, future)
+        atr_val = atrp[i] if not pd.isna(atrp[i]) else None
+        sim = _simulate_forward(price, future, atr_val)
         if not sim:
             continue
         pct, reason, days = sim

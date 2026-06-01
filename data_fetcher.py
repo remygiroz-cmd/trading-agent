@@ -281,6 +281,18 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     if "volume" in df.columns:
         df["vol_avg20"] = df["volume"].rolling(20).mean()
 
+    # ATR (Average True Range) — mesure de volatilité, pour les stops adaptés
+    if {"high", "low"}.issubset(df.columns):
+        period = ind.get("atr_period", 14)
+        prev_close = df["close"].shift(1)
+        tr = pd.concat([
+            df["high"] - df["low"],
+            (df["high"] - prev_close).abs(),
+            (df["low"] - prev_close).abs(),
+        ], axis=1).max(axis=1)
+        df["atr"] = tr.rolling(period).mean()
+        df["atr_pct"] = df["atr"] / df["close"]
+
     return df
 
 
@@ -316,6 +328,7 @@ def latest_snapshot(df: pd.DataFrame) -> dict:
         "macd_signal_state": macd_signal_state,
         "volume": val("volume"),
         "vol_avg20": val("vol_avg20"),
+        "atr_pct": val("atr_pct"),
     }
 
 

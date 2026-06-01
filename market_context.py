@@ -57,6 +57,33 @@ def passes_relative_strength(stock_df: pd.DataFrame, market_df: pd.DataFrame) ->
 
 
 # ─────────────────────────────────────────────────────────────
+# NIVEAUX DE SORTIE ADAPTÉS À LA VOLATILITÉ (ATR)
+# ─────────────────────────────────────────────────────────────
+
+def compute_levels(entry: float, atr_pct: float | None) -> dict:
+    """
+    Calcule objectif / stop / horizon à partir de la volatilité (ATR).
+    Stop calé sur l'ATR (borné), bien plus efficace que des % fixes sur les
+    valeurs nerveuses (cf. backtest). Repli en % fixes si ATR absent.
+    """
+    r = config.RISK
+    if r["mode"] == "atr" and atr_pct and atr_pct > 0:
+        stop_pct = min(max(r["atr_stop_mult"] * atr_pct, r["min_stop_pct"]), r["max_stop_pct"])
+        target_pct = min(r["atr_target_mult"] * atr_pct, r["max_target_pct"])
+    else:
+        stop_pct = r["fixed_stop_pct"]
+        target_pct = r["fixed_target_pct"]
+
+    return {
+        "stop": round(entry * (1 - stop_pct), 4),
+        "target": round(entry * (1 + target_pct), 4),
+        "stop_pct": round(stop_pct, 4),
+        "target_pct": round(target_pct, 4),
+        "horizon": r["default_horizon"],
+    }
+
+
+# ─────────────────────────────────────────────────────────────
 # #2 — FILTRE RÉSULTATS
 # ─────────────────────────────────────────────────────────────
 

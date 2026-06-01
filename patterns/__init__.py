@@ -19,6 +19,7 @@ from . import high_tight_flag
 from . import pocket_pivot
 from . import flat_base
 from . import double_bottom
+from . import momentum_pop
 
 PATTERNS = {
     "bull_flag": bull_flag.detect,
@@ -28,6 +29,7 @@ PATTERNS = {
     "pocket_pivot": pocket_pivot.detect,
     "flat_base": flat_base.detect,
     "double_bottom": double_bottom.detect,
+    "momentum_pop": momentum_pop.detect,
 }
 
 

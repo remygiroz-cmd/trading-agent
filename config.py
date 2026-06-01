@@ -118,6 +118,23 @@ INDICATORS = {
     "macd_slow": 26,
     "macd_signal": 9,
     "ma_periods": [10, 20, 50],
+    "atr_period": 14,
+}
+
+# Gestion du risque : stops/objectifs adaptés à la volatilité (ATR).
+# Le backtest montre que des stops fixes serrés (-6%) font perdre sur les valeurs
+# nerveuses ; un stop calé sur l'ATR (réussite 42%, +1,69%/trade) est bien meilleur.
+RISK = {
+    "mode": "atr",            # 'atr' ou 'fixed'
+    "atr_stop_mult": 1.5,     # stop = entrée - 1.5 x ATR
+    "atr_target_mult": 3.0,   # objectif = entrée + 3 x ATR
+    "min_stop_pct": 0.04,     # bornes de sécurité
+    "max_stop_pct": 0.15,
+    "max_target_pct": 0.45,
+    "default_horizon": 10,
+    # repli si ATR indisponible (mode 'fixed')
+    "fixed_stop_pct": 0.06,
+    "fixed_target_pct": 0.12,
 }
 
 
@@ -176,6 +193,7 @@ AI_REQUEST = {
 # À réactiver si sa détection est améliorée (cf. backtest.py).
 ENABLED_PATTERNS = [
     "bull_flag", "cup_handle", "vcp", "pocket_pivot", "flat_base", "double_bottom",
+    "momentum_pop",   # signal explosif (volume+momentum+volatilité), stops ATR
 ]
 
 ALERT_RULES = {

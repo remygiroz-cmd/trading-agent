@@ -52,10 +52,13 @@ def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
     result = debate_out["result"]
 
     price = snapshot.get("price")
-    # Objectif / stop : priorité à DeepSeek (technique), fallback raisonnable
-    target = _f(ds.get("objectif_prix")) or (round(price * 1.12, 2) if price else None)
-    stop = _f(ds.get("stop_loss")) or (round(price * 0.95, 2) if price else None)
-    horizon = int(_f(ds.get("horizon_jours"), 10) or 10)
+    # Objectif / stop : calés sur la volatilité (ATR) — bien plus efficaces que des
+    # % fixes d'après le backtest. L'horizon vient de DeepSeek si disponible.
+    import market_context
+    levels = market_context.compute_levels(price, snapshot.get("atr_pct")) if price else {}
+    target = levels.get("target") or _f(ds.get("objectif_prix"))
+    stop = levels.get("stop") or _f(ds.get("stop_loss"))
+    horizon = int(_f(ds.get("horizon_jours"), levels.get("horizon", 10)) or levels.get("horizon", 10))
     max_pos = int(_f(cl.get("taille_position_max_pct"), 5) or 5)
 
     upside = ((target - price) / price * 100) if (price and target) else 0.0
