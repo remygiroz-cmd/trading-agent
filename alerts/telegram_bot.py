@@ -106,7 +106,7 @@ def format_alert(s: dict) -> str:
 💰 Prix actuel  : {s.get('price')}
 🎯 Objectif     : {s.get('target')} (+{s.get('upside',0):.1f}%)
 🛑 Stop         : {s.get('stop')} (-{s.get('downside',0):.1f}%)
-⚖️  Position max : {s.get('max_position_pct')}% du portefeuille
+⚖️  Position     : {s.get('suggested_position_pct', s.get('max_position_pct'))}% du portefeuille
 ⏱️  Horizon      : {s.get('horizon_days')} jours
 📈 Timeframe    : {s.get('timeframe')}
 
@@ -114,6 +114,10 @@ def format_alert(s: dict) -> str:
 💬 Grok     : {s.get('grok_reason','')}
 💬 Claude   : {s.get('claude_reason','')}"""
 
+    if s.get("conviction_text"):
+        msg += f"\n\n🎯 {s['conviction_text']}"
+    if s.get("divergence_text"):
+        msg += f"\n⚠️ Divergence : {s['divergence_text']}"
     if s.get("claude_warning"):
         msg += f"\n\n⚠️ Claude : {s['claude_warning']}"
     if s.get("is_paper"):

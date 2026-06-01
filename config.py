@@ -157,6 +157,58 @@ RISK = {
 
 
 # ─────────────────────────────────────────────────────────────
+# AUTO-RÉGLAGE DES SORTIES (boucle fermée objectif/stop/horizon)
+# Ré-optimisation walk-forward périodique ; l'agent applique tout seul le
+# meilleur réglage validé en TEST (cf. autotune.py). Garde-fous inclus.
+# ─────────────────────────────────────────────────────────────
+AUTOTUNE = {
+    "enabled": True,
+    "time": "07:30",            # heure de lancement (matin, avant les scans)
+    "min_interval_days": 28,    # ~1x/mois (gros calcul : watchlist complète sur 2 ans)
+    "years": 2,                 # profondeur d'historique pour le backtest
+    "min_signals": 60,          # en deçà, on ne touche à rien (pas assez de preuve)
+    "min_winrate": 55.0,        # critère cible : réussite TEST >= 55%
+    "min_avg_win": 10.0,        # critère cible : gain moyen des gagnants >= 10%
+    "min_test_winrate": 50.0,   # garde-fou : réussite TEST mini pour appliquer
+    "min_improvement_pp": 0.5,  # garde-fou : marge d'espérance vs réglage actif (points de %)
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# ANALYSE FONDAMENTALE (santé financière de l'entreprise)
+# Données yfinance (gratuit), mises en cache par ticker. Injectées dans le
+# contexte des IA pour étayer la décision (cf. fundamentals.py).
+# ─────────────────────────────────────────────────────────────
+FUNDAMENTALS = {
+    "enabled": True,
+    "cache_days": 5,            # les fondamentaux bougent lentement -> cache 5 jours
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# CONVICTION COMPOSITE + DIMENSIONNEMENT (cf. conviction.py)
+# Croise technique / fondamental / sentiment en une conviction 0-100, détecte
+# les divergences, et en déduit une taille de position avec gestion du risque.
+# ─────────────────────────────────────────────────────────────
+CONVICTION = {
+    "enabled": True,
+    # Poids des trois piliers (renormalisés sur ceux réellement disponibles)
+    "weights": {"technique": 0.50, "fondamental": 0.30, "sentiment": 0.20},
+    # Seuils de divergence (sur axes normalisés 0-1)
+    "strong": 0.65,            # un pilier est "fort" au-dessus de ce seuil
+    "weak": 0.40,              # un pilier est "faible" en dessous
+}
+
+SIZING = {
+    "min_pct": 1.0,            # taille plancher d'une position (% du portefeuille)
+    "max_pct": 10.0,           # taille plafond
+    "conviction_floor": 60.0,  # conviction en deçà de laquelle on reste au plancher
+    "max_risk_per_trade_pct": 1.0,  # risque max par trade (perte au stop) en % du portefeuille
+    "divergence_factor": 0.6,  # réduction de taille en cas de divergence
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # POIDS INITIAUX DES IA
 # ─────────────────────────────────────────────────────────────
 

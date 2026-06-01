@@ -29,6 +29,12 @@ DONNÉES TECHNIQUES :
 - MA20 : {ma20} | MA50 : {ma50}
 - Score setup : {setup_score}/50
 
+FONDAMENTAUX : {fundamentals_score} — {fundamentals_context}
+
+ACTUALITÉS RÉCENTES (mémoire du système) :
+{news_context}
+{news_sentiment}
+
 TON HISTORIQUE SUR CE TICKER :
 {ticker_history}
 
@@ -57,6 +63,10 @@ SECTEUR : {sector}
 
 Recherche sur X (Twitter) les informations des dernières 48h sur ce ticker.
 Cherche aussi les actualités financières récentes.
+
+ACTUALITÉS DÉJÀ EN MÉMOIRE (à recouper avec ta recherche en direct) :
+{news_context}
+{news_sentiment}
 
 Analyse :
 1. Le sentiment général sur X (bullish/bearish/neutre)
@@ -90,12 +100,21 @@ CAPITALISATION : {market_cap}
 FIGURE : {pattern_name}
 SCORE TECHNIQUE : {setup_score}/50
 
+FONDAMENTAUX DE L'ENTREPRISE :
+{fundamentals_score}
+{fundamentals_context}
+{analyst_view}
+
 CONTEXTE MARCHÉ :
 - SPX vs MA50 : {spx_status}
 - VIX : {vix}
 - Secteur en tendance : {sector_trend}
 - Saison des résultats : {earnings_season}
 - Prochains résultats : {next_earnings}
+
+ACTUALITÉS RÉCENTES (mémoire du système) :
+{news_context}
+{news_sentiment}
 
 HISTORIQUE SYSTÈME :
 {agent_performance}
