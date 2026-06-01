@@ -99,6 +99,8 @@ def build_context(ticker: str, snapshot: dict, pattern: dict, market: dict,
             nc = news.news_context(ticker, company_name=company_name, terms=terms)
             ctx["news_context"] = nc["text"]
             ctx["news_sentiment"] = nc["sentiment_text"]
+            # valeur numérique pour la conviction (non injectée dans les prompts)
+            ctx["news_sentiment_score"] = nc["sentiment"].get("score")
         except Exception as e:  # noqa: BLE001
             logger.warning("Actualités indisponibles pour le contexte : %s", e)
 
@@ -109,6 +111,8 @@ def build_context(ticker: str, snapshot: dict, pattern: dict, market: dict,
             ctx["fundamentals_context"] = fc["text"]
             ctx["fundamentals_score"] = fc["score_text"]
             ctx["analyst_view"] = fc["analyst_text"]
+            # valeur numérique pour la conviction (non injectée dans les prompts)
+            ctx["fundamental_score_value"] = fc["score"]
             # complète secteur / capi si on ne les avait pas
             if ctx["sector"] == "n/d" and fc["sector"] != "n/d":
                 ctx["sector"] = fc["sector"]

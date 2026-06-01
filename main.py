@@ -46,11 +46,13 @@ def _f(val, default=None):
 
 
 def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
-                    debate_out: dict, timeframe: str = "1d", is_paper: bool = True) -> dict:
+                    debate_out: dict, timeframe: str = "1d", is_paper: bool = True,
+                    ctx: dict | None = None) -> dict:
     """Construit l'enregistrement de signal + les champs d'affichage de l'alerte."""
     votes = debate_out["final_votes"]
     ds, gk, cl = votes.get("deepseek", {}), votes.get("grok", {}), votes.get("claude", {})
     result = debate_out["result"]
+    ctx = ctx or {}
 
     price = snapshot.get("price")
     # Objectif / stop : calés sur la volatilité (ATR) — bien plus efficaces que des
@@ -65,7 +67,14 @@ def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
     upside = ((target - price) / price * 100) if (price and target) else 0.0
     downside = ((price - stop) / price * 100) if (price and stop) else 0.0
 
-    # Enregistrement base (colonnes trading_signals)
+    # Conviction composite (technique + fondamental + sentiment) + dimensionnement
+    import conviction as conv_mod
+    senti = ctx.get("news_sentiment_score")
+    fund = ctx.get("fundamental_score_value")
+    conv = conv_mod.evaluate(final_score=result["final_score"], fundamental_score=fund,
+                             sentiment_score=senti, downside_pct=downside, ai_max_pct=max_pos)
+
+    # Enregistrement base (colonnes trading_signals) + colonnes analytiques (migration 005)
     record = {
         "ticker": ticker,
         "pattern_name": pattern.get("pattern"),
@@ -78,6 +87,12 @@ def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
         "buy_votes": result["buy_votes"],
         "horizon_days": horizon,
         "is_paper": is_paper,
+        # — colonnes analytiques (best-effort : ignorées si migration 005 non passée) —
+        "news_sentiment": round(float(senti), 3) if senti is not None else None,
+        "fundamental_score": int(fund) if fund is not None else None,
+        "conviction": conv["conviction"],
+        "divergence": conv["divergence"],
+        "suggested_position_pct": conv["suggested_position_pct"],
     }
 
     # Champs d'affichage de l'alerte
@@ -85,6 +100,8 @@ def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
         **record,
         "price": price, "target": target, "stop": stop,
         "upside": upside, "downside": downside, "max_position_pct": max_pos,
+        "conviction_text": conv["conviction_text"],
+        "divergence_text": conv["divergence_text"],
         "deepseek_verdict": ds.get("verdict", "?"), "deepseek_score": ds.get("score", "?"),
         "grok_verdict": gk.get("verdict", "?"), "grok_score": gk.get("score", "?"),
         "claude_verdict": cl.get("verdict", "?"), "claude_score": cl.get("score", "?"),
@@ -257,7 +274,7 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         summary["details"].append(detail)
 
         if res["send_alert"]:
-            assembled = assemble_signal(tk, snap, best, debate_out, is_paper=paper)
+            assembled = assemble_signal(tk, snap, best, debate_out, is_paper=paper, ctx=ctx)
             persist_and_alert(assembled, debate_out, send=send_alerts)
             summary["alerts"] += 1
 

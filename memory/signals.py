@@ -13,6 +13,15 @@ logger = logging.getLogger("signals")
 SIGNALS = "trading_signals"
 VOTES = "ai_votes"
 
+# Colonnes garanties par la migration 001 (toujours présentes en base).
+# Les colonnes analytiques (conviction, divergence, news_sentiment, etc.) sont
+# best-effort : si la migration 005 n'a pas encore été passée, on retombe sur
+# ce socle pour ne jamais perdre un signal.
+CORE_COLUMNS = {
+    "ticker", "pattern_name", "timeframe", "entry_price", "target_price",
+    "stop_loss", "setup_score", "final_score", "buy_votes", "horizon_days", "is_paper",
+}
+
 
 # ─────────────────────────────────────────────────────────────
 # CRÉATION
@@ -33,6 +42,20 @@ def insert_signal(signal: dict) -> dict | None:
             logger.info("Signal inséré : %s %s (id=%s)", row["ticker"], row["pattern_name"], row["id"])
         return row
     except Exception as e:  # noqa: BLE001
+        # Repli : colonnes analytiques peut-être absentes (migration 005 non passée).
+        # On réessaie avec le socle garanti pour ne jamais perdre le signal.
+        core = {k: v for k, v in signal.items() if k in CORE_COLUMNS}
+        if len(core) < len(signal):
+            try:
+                res = database.table(SIGNALS).insert(core).execute()
+                row = res.data[0] if res.data else None
+                if row:
+                    logger.warning("Signal inséré sans colonnes analytiques "
+                                   "(migration 005 à passer) : %s", row["ticker"])
+                return row
+            except Exception as e2:  # noqa: BLE001
+                logger.error("insert_signal repli échec : %s", e2)
+                return None
         logger.error("insert_signal échec : %s", e)
         return None
 

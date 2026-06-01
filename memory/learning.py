@@ -265,8 +265,74 @@ def run_daily_learning() -> dict:
     return res
 
 
+def _winrate(results: list[float]) -> tuple[float, int]:
+    """Taux de réussite + taille d'échantillon."""
+    if not results:
+        return 0.0, 0
+    return sum(1 for r in results if r > 0) / len(results), len(results)
+
+
+def analyze_signal_drivers(min_sample: int = 8) -> list[dict]:
+    """
+    ATTRIBUTION : mesure, sur les signaux clos, quel pilier prédit le mieux les
+    gains (conviction, fondamental, sentiment, divergence) et en tire des règles.
+
+    Sans biais : on lit ce qui était connu AU MOMENT du signal (colonnes
+    enregistrées) vs le résultat J+7 réel. Dégrade en silence si la migration 005
+    n'est pas passée (colonnes absentes -> valeurs None ignorées).
+    """
+    rows = (database.table("trading_signals")
+            .select("result_7d, conviction, fundamental_score, news_sentiment, divergence")
+            .execute()).data or []
+    closed = [r for r in rows if r.get("result_7d") is not None]
+    if len(closed) < min_sample:
+        return []
+
+    created = []
+
+    def add(desc, rtype, reliability, n):
+        rule = performance.add_learned_rule(desc, rtype, reliability, n)
+        if rule:
+            created.append(rule)
+
+    # 1) Conviction élevée (>=75) vs le reste
+    high = [float(r["result_7d"]) for r in closed if (r.get("conviction") or 0) >= 75]
+    wr, n = _winrate(high)
+    if n >= min_sample and wr >= 0.65:
+        add(f"Conviction >= 75/100 : {wr*100:.0f}% de réussite ({n} signaux)", "conviction", wr, n)
+
+    # 2) Fondamental solide (>=70) vs fragile (<45)
+    solid = [float(r["result_7d"]) for r in closed if (r.get("fundamental_score") or 0) >= 70]
+    wr, n = _winrate(solid)
+    if n >= min_sample and wr >= 0.65:
+        add(f"Fondamental solide (>=70) : {wr*100:.0f}% de réussite ({n} signaux)", "fondamental", wr, n)
+    fragile = [float(r["result_7d"]) for r in closed
+               if r.get("fundamental_score") is not None and r["fundamental_score"] < 45]
+    wr, n = _winrate(fragile)
+    if n >= min_sample and wr <= 0.40:
+        add(f"Méfiance : fondamental fragile (<45) échoue souvent "
+            f"({(1-wr)*100:.0f}% de pertes, {n} signaux)", "fondamental", 1 - wr, n)
+
+    # 3) Sentiment actualités positif vs négatif
+    pos = [float(r["result_7d"]) for r in closed if (r.get("news_sentiment") or 0) > 0.1]
+    wr, n = _winrate(pos)
+    if n >= min_sample and wr >= 0.65:
+        add(f"Actualités positives : {wr*100:.0f}% de réussite ({n} signaux)", "sentiment", wr, n)
+
+    # 4) Divergence : sous-performe-t-elle ?
+    div = [float(r["result_7d"]) for r in closed if r.get("divergence")]
+    wr, n = _winrate(div)
+    if n >= min_sample and wr <= 0.40:
+        add(f"Méfiance : les divergences échouent souvent "
+            f"({(1-wr)*100:.0f}% de pertes, {n} signaux)", "divergence", 1 - wr, n)
+
+    logger.info("Attribution : %s règles déduites des pilotes de conviction", len(created))
+    return created
+
+
 def run_weekly_learning() -> dict:
-    """Hebdo (lundi) : règles apprises + recalcul des poids des IA."""
+    """Hebdo (lundi) : règles apprises + attribution des pilotes + recalcul des poids."""
     rules = generate_learned_rules()
+    driver_rules = analyze_signal_drivers()
     new_weights = weights.recalculate_ai_weights()
-    return {"rules_created": len(rules), "weights": new_weights}
+    return {"rules_created": len(rules) + len(driver_rules), "weights": new_weights}

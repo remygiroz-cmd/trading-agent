@@ -186,6 +186,29 @@ FUNDAMENTALS = {
 
 
 # ─────────────────────────────────────────────────────────────
+# CONVICTION COMPOSITE + DIMENSIONNEMENT (cf. conviction.py)
+# Croise technique / fondamental / sentiment en une conviction 0-100, détecte
+# les divergences, et en déduit une taille de position avec gestion du risque.
+# ─────────────────────────────────────────────────────────────
+CONVICTION = {
+    "enabled": True,
+    # Poids des trois piliers (renormalisés sur ceux réellement disponibles)
+    "weights": {"technique": 0.50, "fondamental": 0.30, "sentiment": 0.20},
+    # Seuils de divergence (sur axes normalisés 0-1)
+    "strong": 0.65,            # un pilier est "fort" au-dessus de ce seuil
+    "weak": 0.40,              # un pilier est "faible" en dessous
+}
+
+SIZING = {
+    "min_pct": 1.0,            # taille plancher d'une position (% du portefeuille)
+    "max_pct": 10.0,           # taille plafond
+    "conviction_floor": 60.0,  # conviction en deçà de laquelle on reste au plancher
+    "max_risk_per_trade_pct": 1.0,  # risque max par trade (perte au stop) en % du portefeuille
+    "divergence_factor": 0.6,  # réduction de taille en cas de divergence
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # POIDS INITIAUX DES IA
 # ─────────────────────────────────────────────────────────────
 
