@@ -103,7 +103,7 @@ BUZZ = {
     "trial_days": 7,                 # durée de l'essai (jours calendaires)
     "max_picks": 4,
     "eu_time": "08:30",              # avant ouverture Euronext (09:00 Paris)
-    "us_time": "15:00",              # avant ouverture US (15:30 Paris)
+    "us_time": "09:00",              # le matin, avant la préouverture US (~10:00 Paris)
     # Recherche en direct via la nouvelle API xAI "Responses" + outils serveur
     # (web_search + x_search). L'ancienne Live Search (search_parameters) est dépréciée.
     "responses_url": "https://api.x.ai/v1/responses",

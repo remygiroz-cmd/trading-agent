@@ -9,9 +9,9 @@ on:
   schedule:
     # ── Été (CEST, UTC+2) ──
     - cron: "30 6 * * 1-5"    # 08:30 radar buzz EU
+    - cron: "0 7 * * 1-5"     # 09:00 radar buzz US (le matin)
     - cron: "35 7 * * 1-5"    # 09:35 ouverture
     - cron: "30 11 * * 1-5"   # 13:30 mi-journée
-    - cron: "0 13 * * 1-5"    # 15:00 radar buzz US
     - cron: "35 15 * * 1-5"   # 17:35 clôture EU
     - cron: "15 20 * * 1-5"   # 22:15 clôture US
     - cron: "30 20 * * 1-5"   # 22:30 bilan quotidien
@@ -21,7 +21,7 @@ on:
     - cron: "30 7 * * 1-5"    # 08:30 radar buzz EU
     - cron: "35 8 * * 1-5"    # 09:35
     - cron: "30 12 * * 1-5"   # 13:30
-    - cron: "0 14 * * 1-5"    # 15:00 radar buzz US
+    - cron: "0 8 * * 1-5"     # 09:00 radar buzz US (le matin)
     - cron: "35 16 * * 1-5"   # 17:35
     - cron: "15 21 * * 1-5"   # 22:15
     - cron: "30 21 * * 1-5"   # 22:30 bilan
