@@ -203,12 +203,25 @@ def _save_offset(offset: int) -> None:
     state.set_state("telegram_offset", {"offset": offset})
 
 
+def _ensure_commands_registered() -> None:
+    """Déclare le menu de commandes à Telegram une seule fois (auto-réparation)."""
+    try:
+        from memory import state
+        if state.get_state("tg_commands_registered", default=False):
+            return
+        if telegram_bot.set_my_commands():
+            state.set_state("tg_commands_registered", True)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Enregistrement commandes différé : %s", e)
+
+
 def poll_and_respond(timeout: int = 0) -> int:
     """
     Draine les updates Telegram en attente : commandes texte + clics boutons.
     Mémorise l'offset pour ne traiter chaque update qu'une fois.
     Retourne le nombre d'updates traités.
     """
+    _ensure_commands_registered()
     offset = _load_offset()
     updates = telegram_bot.get_updates(offset=offset, timeout=timeout)
     handled = 0

@@ -70,6 +70,43 @@ def send_message(text: str, chat_id: str | None = None,
         return None
 
 
+BOT_COMMANDS = [
+    ("stats", "Mes performances (réussite, espérance…)"),
+    ("dashboard", "Tableau de bord visuel (fichier)"),
+    ("paper", "Portefeuille fictif (paper trading)"),
+    ("diag", "Le bot a-t-il bien tourné aujourd'hui ?"),
+    ("status", "État du système et prochain scan"),
+    ("bilan", "Signaux du jour"),
+    ("pause", "Suspendre les alertes"),
+    ("actif", "Réactiver les alertes"),
+    ("help", "Liste des commandes"),
+]
+
+
+def set_my_commands(commands: list[tuple[str, str]] | None = None) -> bool:
+    """
+    Déclare les commandes du bot à Telegram (menu affiché quand on tape '/').
+    À appeler une fois (ou après modification de la liste).
+    """
+    if not _enabled():
+        logger.warning("Telegram non configuré — set_my_commands ignoré.")
+        return False
+    cmds = commands or BOT_COMMANDS
+    payload = {"commands": [{"command": c, "description": d} for c, d in cmds]}
+    try:
+        r = requests.post(_url("setMyCommands"), json=payload,
+                          timeout=config.DATA_SOURCE["request_timeout"])
+        out = r.json()
+        if not out.get("ok"):
+            logger.error("setMyCommands KO : %s", out)
+            return False
+        logger.info("Commandes Telegram déclarées : %s", ", ".join(c for c, _ in cmds))
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.error("set_my_commands échec : %s", e)
+        return False
+
+
 def send_document(file_path: str, caption: str | None = None,
                   chat_id: str | None = None) -> dict | None:
     """Envoie un fichier (ex. dashboard HTML) en pièce jointe."""

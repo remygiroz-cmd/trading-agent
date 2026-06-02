@@ -489,6 +489,11 @@ def main(argv: list[str]):
             print(f"{k}: {v}")
         if not apply:
             print("(simulation — ajoute --apply pour écrire le réglage)")
+    elif cmd == "setup-telegram":
+        # Déclare le menu de commandes du bot à Telegram (menu '/')
+        from alerts import telegram_bot
+        ok = telegram_bot.set_my_commands()
+        print("Commandes Telegram déclarées." if ok else "Échec (vérifier le token).")
     elif cmd == "selftest":
         run_selftest()
     else:
