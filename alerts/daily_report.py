@@ -137,6 +137,9 @@ def handle_command(text: str) -> str:
     if cmd == "/stats":
         return _stats_message()
 
+    if cmd == "/dashboard":
+        return _send_dashboard()
+
     if cmd == "/bilan":
         return _week_summary()
 
@@ -180,7 +183,8 @@ def handle_command(text: str) -> str:
                 "Commandes :\n"
                 "/paper — récap du portefeuille virtuel (1000 €/trade)\n"
                 "/diag — santé du jour (scans, candidats, meilleur score)\n"
-                "/stats — poids des IA\n"
+                "/stats — performances (réussite par IA, secteur, conviction)\n"
+                "/dashboard — tableau de bord visuel (fichier HTML)\n"
                 "/status — état du système\n"
                 "/bilan — signaux du jour\n"
                 "/pause /actif /digest — mode d'alerte\n"
@@ -277,12 +281,22 @@ def _status_message() -> str:
 
 def _stats_message() -> str:
     try:
-        from memory import weights
-        w = weights.get_current_weights()
-        lines = "\n".join(f"  {a} : {v*100:.0f}%" for a, v in w.items())
-        return f"📈 Poids actuels des IA :\n{lines}"
+        import dashboard
+        return dashboard.build_text_summary()
     except Exception as e:  # noqa: BLE001
         return f"Stats indisponibles : {e}"
+
+
+def _send_dashboard() -> str:
+    """Génère le dashboard HTML et l'envoie en pièce jointe Telegram."""
+    try:
+        import dashboard
+        path = "/tmp/dashboard.html"
+        dashboard.write_html(path)
+        ok = telegram_bot.send_document(path, caption="📊 Tableau de bord — ouvre-le dans ton navigateur")
+        return "" if ok else "Dashboard généré mais envoi du fichier impossible."
+    except Exception as e:  # noqa: BLE001
+        return f"Dashboard indisponible : {e}"
 
 
 def _week_summary() -> str:

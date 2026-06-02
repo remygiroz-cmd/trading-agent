@@ -70,6 +70,29 @@ def send_message(text: str, chat_id: str | None = None,
         return None
 
 
+def send_document(file_path: str, caption: str | None = None,
+                  chat_id: str | None = None) -> dict | None:
+    """Envoie un fichier (ex. dashboard HTML) en pièce jointe."""
+    if not _enabled():
+        logger.warning("Telegram non configuré — document ignoré.")
+        return None
+    try:
+        with open(file_path, "rb") as f:
+            data = {"chat_id": chat_id or config.TELEGRAM_CHAT_ID}
+            if caption:
+                data["caption"] = caption
+            r = requests.post(_url("sendDocument"), data=data,
+                              files={"document": f}, timeout=60)
+        out = r.json()
+        if not out.get("ok"):
+            logger.error("sendDocument KO : %s", out)
+            return None
+        return out["result"]
+    except Exception as e:  # noqa: BLE001
+        logger.error("send_document échec : %s", e)
+        return None
+
+
 def answer_callback(callback_id: str, text: str = "") -> None:
     """Accuse réception d'un clic sur bouton (enlève le 'chargement')."""
     if not _enabled():

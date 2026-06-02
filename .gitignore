@@ -23,3 +23,4 @@ data_cache/
 # Sorties d analyse
 backtest_results.csv
 discover_features.csv
+dashboard.html

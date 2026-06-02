@@ -440,6 +440,18 @@ def main(argv: list[str]):
             buzz.send_recap()
         else:
             print(buzz.run_digest(sub.upper()))
+    elif cmd == "dashboard":
+        # python main.py dashboard [chemin] [--send]
+        import dashboard
+        path = next((a for a in argv[1:] if not a.startswith("-")), "dashboard.html")
+        sigs = dashboard.fetch_signals()
+        print(dashboard.build_text_summary(sigs))
+        dashboard.write_html(path, sigs)
+        print(f"\nDashboard HTML écrit : {path}")
+        if "--send" in argv:
+            from alerts import telegram_bot
+            telegram_bot.send_document(path, caption="📊 Tableau de bord")
+            print("Envoyé sur Telegram.")
     elif cmd == "regime":
         # python main.py regime — affiche le régime de marché actuel
         import market_regime
