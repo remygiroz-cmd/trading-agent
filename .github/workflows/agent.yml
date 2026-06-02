@@ -1,39 +1,17 @@
 name: Agent boursier — scans planifiés
 
-# Déclenchements aux horaires des scans (config.SCAN_SCHEDULE, Europe/Paris).
-# GitHub Actions utilise l'heure UTC et ne gère pas l'heure d'été : on déclare
-# donc les deux décalages (été UTC+2 / hiver UTC+1). Le dispatcher main.py cron
-# n'exécute la tâche QUE si l'heure de Paris correspond à un créneau prévu — les
-# déclenchements de la "mauvaise" saison sont des no-op instantanés.
+# Le déclenchement est désormais piloté par Supabase Cron (minuteur fiable), qui
+# appelle la fonction Edge `trigger-agent` -> workflow_dispatch (command "cron").
+# Toutes les 15 min en journée (cf. docs/supabase-cron.md). On garde donc
+# uniquement le déclenchement manuel/externe ci-dessous. L'ancien bloc `schedule:`
+# (cron GitHub, peu fiable) a été retiré pour éviter les doublons.
 on:
-  schedule:
-    # ── Été (CEST, UTC+2) ──
-    - cron: "30 6 * * 1-5"    # 08:30 radar buzz EU
-    - cron: "0 7 * * 1-5"     # 09:00 radar buzz US (le matin)
-    - cron: "35 7 * * 1-5"    # 09:35 ouverture
-    - cron: "30 11 * * 1-5"   # 13:30 mi-journée
-    - cron: "35 15 * * 1-5"   # 17:35 clôture EU
-    - cron: "15 20 * * 1-5"   # 22:15 clôture US
-    - cron: "30 20 * * 1-5"   # 22:30 bilan quotidien
-    - cron: "0 6 * * 1"       # 08:00 lundi : tâches hebdo
-    - cron: "0 8 * * 6"       # samedi : permet le récap de fin d'essai buzz
-    # ── Hiver (CET, UTC+1) ──
-    - cron: "30 7 * * 1-5"    # 08:30 radar buzz EU
-    - cron: "35 8 * * 1-5"    # 09:35
-    - cron: "30 12 * * 1-5"   # 13:30
-    - cron: "0 8 * * 1-5"     # 09:00 radar buzz US (le matin)
-    - cron: "35 16 * * 1-5"   # 17:35
-    - cron: "15 21 * * 1-5"   # 22:15
-    - cron: "30 21 * * 1-5"   # 22:30 bilan
-    - cron: "0 7 * * 1"       # 08:00 lundi
-    # ── Relève des commandes Telegram (/paper, boutons…) toutes les 30 min ──
-    - cron: "*/30 6-21 * * 1-5"
-  workflow_dispatch:           # déclenchement manuel depuis l'onglet Actions
+  workflow_dispatch:           # déclenché par Supabase Cron + manuel (onglet Actions)
     inputs:
       command:
-        description: "Commande à lancer (selftest, cron, test-cycle, scan)"
+        description: "Commande à lancer (cron, selftest, test-cycle, scan)"
         required: false
-        default: "selftest"
+        default: "cron"
         type: string
 
 jobs:
