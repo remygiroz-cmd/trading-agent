@@ -103,8 +103,8 @@ BUZZ = {
     "permanent": True,               # True = pas de limite 7 jours (bilan du soir chaque jour)
     "trial_days": 7,                 # durée de l'essai si permanent=False
     "max_picks": 4,
-    "eu_time": "08:30",              # avant ouverture Euronext (09:00 Paris)
-    "us_time": "09:00",              # le matin, avant la préouverture US (~10:00 Paris)
+    "eu_time": "08:30",              # buzz Europe + US ensemble le matin (avant ouverture)
+    "us_time": "08:30",              # même horaire que l'EU (les 2 récaps au même moment)
     # Recherche en direct via la nouvelle API xAI "Responses" + outils serveur
     # (web_search + x_search). L'ancienne Live Search (search_parameters) est dépréciée.
     "responses_url": "https://api.x.ai/v1/responses",
