@@ -118,6 +118,8 @@ def format_alert(s: dict) -> str:
         msg += f"\n\n🌡️ Régime marché : {s['regime_label']}"
     if s.get("conviction_text"):
         msg += f"\n🎯 {s['conviction_text']}"
+    if s.get("sector_note"):
+        msg += f"\n{s['sector_note']}"
     if s.get("divergence_text"):
         msg += f"\n⚠️ Divergence : {s['divergence_text']}"
     if s.get("claude_warning"):

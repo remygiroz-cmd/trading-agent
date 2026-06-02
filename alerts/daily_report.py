@@ -46,6 +46,15 @@ Signaux envoyés : {len(signals)}
             val = f"{r1*100:+.1f}%"
         msg += f"{emoji} {s.get('ticker')} : {val}\n"
 
+    # Répartition sectorielle (clusters du jour)
+    try:
+        import sector_cluster
+        breakdown = sector_cluster.breakdown_from_signals(signals)
+        if breakdown:
+            msg += f"\n{breakdown}\n"
+    except Exception:  # noqa: BLE001
+        pass
+
     msg += f"""
 Taux réussite semaine : {perf.get('week_win_rate', 0)*100:.0f}%
 Meilleure IA semaine  : {perf.get('best_agent', 'n/d')}

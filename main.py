@@ -94,6 +94,7 @@ def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
         "conviction": conv["conviction"],
         "divergence": conv["divergence"],
         "suggested_position_pct": conv["suggested_position_pct"],
+        "sector": ctx.get("sector") if ctx.get("sector") not in (None, "n/d") else None,
     }
 
     # Champs d'affichage de l'alerte
@@ -201,6 +202,11 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
     logger.info("Régime %s — seuil %s/100, finalistes max %s, taille x%s (%s)",
                 regime["label"], eff_min_score, eff_max_finalists, regime["size_mult"], regime["details"])
 
+    # Clustering sectoriel : on part des signaux déjà émis aujourd'hui (scans
+    # précédents) et on incrémente au fil de ce scan pour annoter les alertes.
+    import sector_cluster
+    sector_today = sector_cluster.todays_counts()
+
     # 2. Watchlist filtrée
     try:
         from memory import performance
@@ -291,6 +297,14 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
             assembled = assemble_signal(tk, snap, best, debate_out, is_paper=paper, ctx=ctx,
                                         regime_mult=regime["size_mult"])
             assembled["display"]["regime_label"] = regime["label"]
+            # Clustering sectoriel : compte ce secteur sur la journée (scans inclus)
+            sec = assembled["record"].get("sector")
+            if sec:
+                sector_today[sec] = sector_today.get(sec, 0) + 1
+                note = sector_cluster.cluster_note(sector_today[sec], sec)
+                if note:
+                    assembled["display"]["sector_note"] = note
+                    logger.info("Cluster sectoriel : %s", note)
             persist_and_alert(assembled, debate_out, send=send_alerts)
             summary["alerts"] += 1
 
