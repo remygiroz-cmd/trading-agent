@@ -47,7 +47,7 @@ def _f(val, default=None):
 
 def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
                     debate_out: dict, timeframe: str = "1d", is_paper: bool = True,
-                    ctx: dict | None = None) -> dict:
+                    ctx: dict | None = None, regime_mult: float = 1.0) -> dict:
     """Construit l'enregistrement de signal + les champs d'affichage de l'alerte."""
     votes = debate_out["final_votes"]
     ds, gk, cl = votes.get("deepseek", {}), votes.get("grok", {}), votes.get("claude", {})
@@ -72,7 +72,8 @@ def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
     senti = ctx.get("news_sentiment_score")
     fund = ctx.get("fundamental_score_value")
     conv = conv_mod.evaluate(final_score=result["final_score"], fundamental_score=fund,
-                             sentiment_score=senti, downside_pct=downside, ai_max_pct=max_pos)
+                             sentiment_score=senti, downside_pct=downside, ai_max_pct=max_pos,
+                             regime_mult=regime_mult)
 
     # Enregistrement base (colonnes trading_signals) + colonnes analytiques (migration 005)
     record = {
@@ -187,6 +188,19 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         _record_activity(summary)
         return summary
 
+    # 1bis. Régime de marché : adapte seuil d'alerte, sélectivité et taille des positions
+    import market_regime
+    try:
+        regime = market_regime.detect_regime()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Détection régime échouée (%s) — réglages haussier par défaut.", e)
+        regime = market_regime._build("haussier", "régime indéterminé", {})
+    eff_min_score = regime["min_final_score"]
+    eff_max_finalists = min(max_finalists, regime["max_finalists"]) if max_finalists else regime["max_finalists"]
+    summary["regime"] = regime["regime"]
+    logger.info("Régime %s — seuil %s/100, finalistes max %s, taille x%s (%s)",
+                regime["label"], eff_min_score, eff_max_finalists, regime["size_mult"], regime["details"])
+
     # 2. Watchlist filtrée
     try:
         from memory import performance
@@ -255,8 +269,8 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
             continue
 
         finalists += 1
-        if max_finalists and finalists > max_finalists:
-            logger.info("Plafond finalistes atteint (%s)", max_finalists)
+        if eff_max_finalists and finalists > eff_max_finalists:
+            logger.info("Plafond finalistes atteint (%s, régime %s)", eff_max_finalists, regime["regime"])
             break
 
         logger.info("Finaliste %s : %s (%.1f/50, RS +%.1f%%) -> débat", tk, best["pattern"],
@@ -265,7 +279,7 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         # enrichir le contexte IA avec RS et résultats
         ctx["sector_trend"] = (f"force relative {(rs.get('outperformance') or 0)*100:+.1f}% vs marché")
         ctx["next_earnings"] = f"dans {days_e} jours" if days_e is not None else "n/d"
-        debate_out = debate.run_debate(ctx, weights=ai_weights)
+        debate_out = debate.run_debate(ctx, weights=ai_weights, min_final_score=eff_min_score)
 
         res = debate_out["result"]
         detail = {"ticker": tk, "pattern": best["pattern"],
@@ -274,7 +288,9 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         summary["details"].append(detail)
 
         if res["send_alert"]:
-            assembled = assemble_signal(tk, snap, best, debate_out, is_paper=paper, ctx=ctx)
+            assembled = assemble_signal(tk, snap, best, debate_out, is_paper=paper, ctx=ctx,
+                                        regime_mult=regime["size_mult"])
+            assembled["display"]["regime_label"] = regime["label"]
             persist_and_alert(assembled, debate_out, send=send_alerts)
             summary["alerts"] += 1
 
@@ -300,6 +316,7 @@ def _record_activity(summary: dict) -> None:
             "finalists": summary.get("finalists", 0),
             "alerts": summary.get("alerts", 0),
             "best_score": summary.get("best_score", 0),
+            "regime": summary.get("regime"),
             "suspended": summary.get("suspended"),
         })
         state.set_state("activity", {today: day})  # ne conserve qu'aujourd'hui
@@ -397,6 +414,15 @@ def main(argv: list[str]):
             buzz.send_recap()
         else:
             print(buzz.run_digest(sub.upper()))
+    elif cmd == "regime":
+        # python main.py regime — affiche le régime de marché actuel
+        import market_regime
+        r = market_regime.detect_regime()
+        print(f"\n=== RÉGIME : {r['label']} ({r['regime']}) ===")
+        print(r["details"])
+        print(f"Seuil alerte : {r['min_final_score']}/100 | finalistes max : "
+              f"{r['max_finalists']} | taille x{r['size_mult']}")
+        print("Mesures :", r["metrics"])
     elif cmd == "news":
         # python main.py news TICKER  — affiche la mémoire actualités d'un ticker
         import news

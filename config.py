@@ -209,6 +209,41 @@ SIZING = {
 
 
 # ─────────────────────────────────────────────────────────────
+# RÉGIME DE MARCHÉ (cf. market_regime.py)
+# Au lieu d'un simple "marché ok / pas ok", on détecte le régime et on adapte
+# la stratégie : seuil d'alerte, nombre de finalistes, taille des positions.
+# Le filtre dur SPX<MA50 / VIX>30 reste non négociable (géré dans market_filter).
+# ─────────────────────────────────────────────────────────────
+REGIMES = {
+    "haussier": {     # tendance saine : on joue normalement
+        "label": "📈 Haussier",
+        "min_final_score": 75,
+        "max_finalists": 8,
+        "size_mult": 1.0,
+    },
+    "prudent": {      # au-dessus de la MA50 mais signaux mitigés (sous MA200, VIX élevé…)
+        "label": "⚠️ Prudent",
+        "min_final_score": 82,    # on exige plus de conviction
+        "max_finalists": 5,
+        "size_mult": 0.6,         # on réduit la taille
+    },
+    "defavorable": {  # repli (normalement déjà bloqué par le filtre dur)
+        "label": "🛑 Défavorable",
+        "min_final_score": 90,
+        "max_finalists": 2,
+        "size_mult": 0.3,
+    },
+}
+
+REGIME_PARAMS = {
+    "ma_trend": 50,          # MA de tendance courte
+    "ma_long": 200,          # MA de tendance longue (golden/death cross)
+    "slope_lookback": 10,    # pente de la MA50 sur ~2 semaines
+    "vix_calm": 22.0,        # VIX en deçà = serein
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # POIDS INITIAUX DES IA
 # ─────────────────────────────────────────────────────────────
 

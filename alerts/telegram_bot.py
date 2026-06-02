@@ -114,8 +114,10 @@ def format_alert(s: dict) -> str:
 💬 Grok     : {s.get('grok_reason','')}
 💬 Claude   : {s.get('claude_reason','')}"""
 
+    if s.get("regime_label"):
+        msg += f"\n\n🌡️ Régime marché : {s['regime_label']}"
     if s.get("conviction_text"):
-        msg += f"\n\n🎯 {s['conviction_text']}"
+        msg += f"\n🎯 {s['conviction_text']}"
     if s.get("divergence_text"):
         msg += f"\n⚠️ Divergence : {s['divergence_text']}"
     if s.get("claude_warning"):

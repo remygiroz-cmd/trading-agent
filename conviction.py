@@ -110,11 +110,13 @@ def detect_divergences(axes: dict) -> list[str]:
 # ─────────────────────────────────────────────────────────────
 
 def position_size(conviction, downside_pct=None, ai_max_pct=None,
-                  has_divergence: bool = False) -> float:
+                  has_divergence: bool = False, regime_mult: float = 1.0) -> float:
     """
     Taille de position (% du portefeuille), gestion du risque incluse :
       - croît avec la conviction (du plancher au plafond) ;
       - réduite en cas de divergence ;
+      - modulée par le régime de marché (regime_mult : plein en haussier, réduit
+        en prudent) ;
       - plafonnée par le risque max par trade (perte au stop) ;
       - plafonnée par la taille max suggérée par les IA (Claude) ;
       - la sécurité (risque) l'emporte toujours en dernier.
@@ -133,14 +135,17 @@ def position_size(conviction, downside_pct=None, ai_max_pct=None,
     if has_divergence:
         pct *= s["divergence_factor"]
 
-    # 3) Cap des IA (prudence Claude)
+    # 3) Régime de marché (réduit la voilure quand le marché est mitigé)
+    pct *= regime_mult
+
+    # 4) Cap des IA (prudence Claude)
     if ai_max_pct:
         pct = min(pct, float(ai_max_pct))
 
-    # 4) Bornes globales
+    # 5) Bornes globales
     pct = max(s["min_pct"], min(pct, s["max_pct"]))
 
-    # 5) Cap par le risque max par trade (la sécurité gagne en dernier)
+    # 6) Cap par le risque max par trade (la sécurité gagne en dernier)
     if downside_pct and downside_pct > 0:
         risk_cap = s["max_risk_per_trade_pct"] / (downside_pct / 100.0)
         pct = min(pct, risk_cap)
@@ -153,7 +158,7 @@ def position_size(conviction, downside_pct=None, ai_max_pct=None,
 # ─────────────────────────────────────────────────────────────
 
 def evaluate(final_score=None, fundamental_score=None, sentiment_score=None,
-             downside_pct=None, ai_max_pct=None) -> dict:
+             downside_pct=None, ai_max_pct=None, regime_mult: float = 1.0) -> dict:
     """
     Synthèse complète prête pour l'enregistrement du signal et l'alerte.
     Retourne conviction, label, divergences, taille conseillée + textes.
@@ -161,7 +166,7 @@ def evaluate(final_score=None, fundamental_score=None, sentiment_score=None,
     conv = compute_conviction(final_score, fundamental_score, sentiment_score)
     divergences = detect_divergences(conv.get("axes", {}))
     has_div = bool(divergences)
-    pct = position_size(conv.get("conviction"), downside_pct, ai_max_pct, has_div)
+    pct = position_size(conv.get("conviction"), downside_pct, ai_max_pct, has_div, regime_mult)
 
     conv_txt = (f"Conviction {conv['conviction']}/100 ({conv['label']})"
                 if conv["conviction"] is not None else "Conviction : n/d")
