@@ -92,6 +92,14 @@ def send_daily_report_now() -> None:
     perf = {"week_win_rate": _week_win_rate(), "best_agent": best_agent}
     daily_report.send_daily_report(today, sigs, perf, adjustments=adjustments)
 
+    # 3. Bilan du soir du radar buzz (picks du jour simulés)
+    try:
+        if config.BUZZ["enabled"]:
+            import buzz
+            buzz.daily_buzz_check(now_paris().date())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Bilan buzz du soir échoué : %s", e)
+
 
 def trigger_weekly_tasks() -> None:
     """Tâches du lundi matin : watchlist dynamique + règles apprises + recalcul poids."""

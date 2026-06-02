@@ -170,6 +170,58 @@ def _send_digest_message(session: str, picks: list, today: dt.date, sources: lis
     telegram_bot.send_message(msg)
 
 
+def daily_buzz_check(today: dt.date | None = None) -> dict:
+    """
+    Bilan du SOIR des picks buzz du jour : simule chaque pick (achat ~ouverture,
+    vente ~clôture) et envoie le résultat. Cumule un compteur de réussite sur
+    toute la durée de l'essai. Appelé chaque soir par le scheduler.
+    """
+    today = today or dt.date.today()
+    s = _get_state()
+    if not s.get("active") or s.get("recap_sent"):
+        return {"sent": False, "reason": "essai inactif"}
+
+    log = state.get_state(LOG_KEY, default=[]) or []
+    todays = [e for e in log if e["date"] == today.isoformat()]
+    if not todays:
+        return {"sent": False, "reason": "aucun pick aujourd'hui"}
+
+    results = []
+    for e in todays:
+        r = _intraday_return(e["ticker"], e["date"])
+        if r is not None:
+            results.append((e, r))
+    if not results:
+        return {"sent": False, "reason": "données intraday indisponibles"}
+
+    import statistics
+    rets = [r for _, r in results]
+    wins = sum(1 for r in rets if r > 0)
+    pnl = sum(r * 1000 for r in rets)
+
+    # Cumul sur l'essai (pour suivre la tendance jour après jour)
+    tally = state.get_state("buzz_daily_tally", default={"trades": 0, "wins": 0, "pnl": 0.0}) or \
+        {"trades": 0, "wins": 0, "pnl": 0.0}
+    tally["trades"] += len(rets)
+    tally["wins"] += wins
+    tally["pnl"] = round(tally["pnl"] + pnl, 2)
+    state.set_state("buzz_daily_tally", tally)
+
+    msg = f"🌙 BILAN BUZZ DU SOIR — {today.isoformat()}\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "(achat ~ouverture, vente ~clôture, 1000€/pick)\n\n"
+    for e, r in sorted(results, key=lambda x: x[1], reverse=True):
+        emoji = "✅" if r > 0 else "❌" if r < 0 else "➖"
+        msg += f"{emoji} {e['ticker']} : {r*100:+.1f}%\n"
+    msg += (f"\nAujourd'hui : {wins}/{len(rets)} gagnants, {pnl:+,.0f} €\n"
+            f"Depuis le début de l'essai : {tally['wins']}/{tally['trades']} gagnants, "
+            f"{tally['pnl']:+,.0f} €")
+    msg += "\n\nℹ️ Simulation sentiment — séparé du système de trading."
+    telegram_bot.send_message(msg)
+    logger.info("Bilan buzz du soir envoyé (%s picks)", len(rets))
+    return {"sent": True, "trades": len(rets), "wins": wins, "pnl": pnl}
+
+
 # ─────────────────────────────────────────────────────────────
 # SIMULATION INTRADAY (achat ~+10min ouverture / vente ~-10min clôture)
 # ─────────────────────────────────────────────────────────────
@@ -268,4 +320,5 @@ def restart():
                                 "recap_sent": False})
     state.set_state(LOG_KEY, [])
     state.set_state("buzz_cost_ticks", 0)
+    state.set_state("buzz_daily_tally", {"trades": 0, "wins": 0, "pnl": 0.0})
     logger.info("Radar buzz relancé.")
