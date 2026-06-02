@@ -32,11 +32,20 @@ VERDICT_NUMERIC = {"ACHETER": None, "ATTENDRE": 5, "IGNORER": 0}  # ACHETER -> s
 # TOUR 3 — VOTE FINAL PONDÉRÉ
 # ─────────────────────────────────────────────────────────────
 
-def calculate_final_score(votes: dict, weights: dict) -> dict:
+def calculate_final_score(votes: dict, weights: dict,
+                          min_final_score: float | None = None,
+                          min_buy_votes: int | None = None) -> dict:
     """
     votes : {agent: {"verdict":..., "score":...}}
     weights : {agent: poids}  (somme ~1)
+    min_final_score / min_buy_votes : seuils d'alerte (par défaut config ;
+      surchargés selon le régime de marché).
     """
+    if min_final_score is None:
+        min_final_score = config.ALERT_RULES["min_final_score"]
+    if min_buy_votes is None:
+        min_buy_votes = config.ALERT_RULES["min_buy_votes"]
+
     weighted = 0.0
     for agent, vote in votes.items():
         verdict = vote.get("verdict", "IGNORER")
@@ -52,8 +61,8 @@ def calculate_final_score(votes: dict, weights: dict) -> dict:
     return {
         "final_score": final_score,
         "buy_votes": buy_votes,
-        "send_alert": final_score >= config.ALERT_RULES["min_final_score"]
-                      and buy_votes >= config.ALERT_RULES["min_buy_votes"],
+        "send_alert": final_score >= min_final_score and buy_votes >= min_buy_votes,
+        "min_final_score": min_final_score,
     }
 
 
@@ -69,7 +78,8 @@ def _summarize(vote: dict) -> str:
     return json.dumps(short, ensure_ascii=False)
 
 
-def run_debate(ctx: dict, weights: dict | None = None, do_round2: bool = True) -> dict:
+def run_debate(ctx: dict, weights: dict | None = None, do_round2: bool = True,
+               min_final_score: float | None = None, min_buy_votes: int | None = None) -> dict:
     """
     Lance le débat complet sur un setup (contexte `ctx`).
 
@@ -124,7 +134,7 @@ def run_debate(ctx: dict, weights: dict | None = None, do_round2: bool = True) -
         final_votes = round2
 
     # ── TOUR 3 : vote final pondéré ──
-    result = calculate_final_score(final_votes, weights)
+    result = calculate_final_score(final_votes, weights, min_final_score, min_buy_votes)
     logger.info("[T3] score final %.1f/100, %s votes ACHETER -> alerte=%s",
                 result["final_score"], result["buy_votes"], result["send_alert"])
 
