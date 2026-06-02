@@ -112,6 +112,23 @@ def build_health_block(date_iso: str | None = None) -> str:
                        "En dessous du seuil → pas d'alerte. NORMAL.")
     else:
         health += f"\n🔔 {alerts} alerte(s) envoyée(s) aujourd'hui."
+
+    # Détail des actions étudiées par les IA (ticker + score), meilleures d'abord
+    studied: dict[str, dict] = {}
+    for r in runs:
+        for d in (r.get("details") or []):
+            tk = d.get("ticker")
+            if not tk:
+                continue
+            if tk not in studied or (d.get("final_score") or 0) > (studied[tk].get("final_score") or 0):
+                studied[tk] = d
+    if studied:
+        ordered = sorted(studied.values(), key=lambda d: -(d.get("final_score") or 0))
+        health += "\n\n🧠 Actions étudiées par les IA :"
+        for d in ordered[:12]:
+            mark = " 🔔" if d.get("alert") else ""
+            pat = f" ({d['pattern']})" if d.get("pattern") else ""
+            health += f"\n  • {d.get('ticker')}{pat} : {d.get('final_score')}/100{mark}"
     return health
 
 

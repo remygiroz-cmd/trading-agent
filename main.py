@@ -344,6 +344,10 @@ def _record_activity(summary: dict) -> None:
             "best_score": summary.get("best_score", 0),
             "regime": summary.get("regime"),
             "suspended": summary.get("suspended"),
+            # détail des actions passées au débat des IA (pour /diag)
+            "details": [{"ticker": d.get("ticker"), "pattern": d.get("pattern"),
+                         "final_score": d.get("final_score"), "alert": d.get("alert")}
+                        for d in summary.get("details", [])],
         })
         state.set_state("activity", {today: day})  # ne conserve qu'aujourd'hui
     except Exception as e:  # noqa: BLE001

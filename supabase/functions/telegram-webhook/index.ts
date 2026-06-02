@@ -236,6 +236,25 @@ async function diagMessage(): Promise<string> {
     `${sum("finalists")} étudiés par les IA.`;
   msg += alerts ? `\n🔔 ${alerts} alerte(s) aujourd'hui.` :
     `\n✅ Meilleur score : ${best}/100. En dessous du seuil → pas d'alerte. NORMAL.`;
+
+  // Détail des actions étudiées par les IA (ticker + score), meilleures d'abord
+  const studied: Record<string, any> = {};
+  for (const r of runs) {
+    for (const d of (r.details ?? [])) {
+      const tk = d.ticker;
+      if (!tk) continue;
+      if (!studied[tk] || (d.final_score ?? 0) > (studied[tk].final_score ?? 0)) studied[tk] = d;
+    }
+  }
+  const ordered = Object.values(studied).sort((a: any, b: any) => (b.final_score ?? 0) - (a.final_score ?? 0));
+  if (ordered.length) {
+    msg += "\n\n🧠 Actions étudiées par les IA :";
+    for (const d of ordered.slice(0, 12) as any[]) {
+      const mark = d.alert ? " 🔔" : "";
+      const pat = d.pattern ? ` (${d.pattern})` : "";
+      msg += `\n  • ${d.ticker}${pat} : ${d.final_score}/100${mark}`;
+    }
+  }
   return msg;
 }
 
