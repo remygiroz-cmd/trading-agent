@@ -51,13 +51,24 @@ supabase secrets set TELEGRAM_WEBHOOK_SECRET="invente_une_longue_chaine_aleatoir
 
 ## 3. Activer le webhook côté Telegram
 
-Depuis ton PC (ou via l'onglet Actions → Run workflow `set-webhook`) :
+Le plus simple : **ouvrir une adresse dans ton navigateur** (aucun terminal).
 
-```bash
-python main.py set-webhook "https://TON_PROJECT_REF.supabase.co/functions/v1/telegram-webhook" "le_meme_secret"
+Prends cette adresse et remplace les 3 morceaux en MAJUSCULES :
+
+```
+https://api.telegram.org/botTON_TOKEN/setWebhook?url=https://TON_PROJECT_REF.supabase.co/functions/v1/telegram-webhook&secret_token=TON_SECRET
 ```
 
-C'est tout. Teste : envoie `/stats` à ton bot, la réponse doit arriver en 1-2 s.
+- `TON_TOKEN` = le token de ton bot (donné par @BotFather sur Telegram)
+- `TON_PROJECT_REF` = la référence de ton projet Supabase (dans l'URL du dashboard)
+- `TON_SECRET` = le même secret qu'à l'étape 2
+
+Colle l'adresse complète dans la barre d'adresse d'un navigateur, appuie sur Entrée.
+Si tu vois `{"ok":true,...}`, c'est gagné. Teste : envoie `/stats` à ton bot, la
+réponse arrive en 1-2 s.
+
+> Variante terminal (optionnelle) :
+> `python main.py set-webhook "https://TON_PROJECT_REF.supabase.co/functions/v1/telegram-webhook" "TON_SECRET"`
 
 ---
 
