@@ -84,5 +84,6 @@ python main.py delete-webhook
   commandes (Telegram n'autorise qu'un seul mode à la fois) — c'est normal.
 - Les **alertes** et le **bilan du soir** continuent de partir via GitHub Actions,
   indépendamment du webhook.
-- Commandes gérées en instantané : `/stats`, `/paper`, `/diag`, `/status`,
-  `/pause`, `/actif`, `/digest`, `/help` + les boutons Pris/Ignoré/Surveille.
+- Commandes gérées en instantané : `/stats`, `/dashboard`, `/paper`, `/diag`,
+  `/status`, `/bilan`, `/pause`, `/actif`, `/digest`, `/help` + les boutons
+  Pris/Ignoré/Surveille.

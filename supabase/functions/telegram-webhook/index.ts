@@ -2,7 +2,7 @@
 //
 // Telegram envoie chaque message/clic à cette fonction (webhook). Elle répond en
 // 1-2 s, 24h/24, sans GitHub Actions. La logique reprend celle du Python
-// (alerts/daily_report.py) en lisant directement Supabase.
+// (alerts/daily_report.py + dashboard.py) en lisant directement Supabase.
 //
 // Variables d'environnement (secrets de la fonction) :
 //   TELEGRAM_BOT_TOKEN        — token du bot
@@ -55,10 +55,20 @@ async function tg(method: string, payload: unknown): Promise<void> {
   });
 }
 
-// ── Helpers d'agrégation (miroir de dashboard.py) ──
+async function tgDocument(chatId: number, filename: string, content: string, caption: string): Promise<void> {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", caption);
+  form.append("document", new Blob([content], { type: "text/html" }), filename);
+  await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendDocument`, { method: "POST", body: form });
+}
+
+// ── Agrégats (miroir de dashboard.py) ──
 const pct = (x: number) => `${(x * 100 >= 0 ? "+" : "")}${(x * 100).toFixed(1)}%`;
 
-function winrateBy(rows: any[], key: string, minN = 2): string[] {
+type Stat = { key: string; n: number; wr: number; avg: number };
+
+function winData(rows: any[], key: string, minN = 2): Stat[] {
   const groups: Record<string, number[]> = {};
   for (const s of rows) {
     if (s.result_7d == null) continue;
@@ -68,57 +78,134 @@ function winrateBy(rows: any[], key: string, minN = 2): string[] {
   }
   return Object.entries(groups)
     .filter(([, v]) => v.length >= minN)
-    .sort((a, b) => b[1].length - a[1].length)
-    .slice(0, 6)
-    .map(([k, v]) => {
-      const wins = v.filter((r) => r > 0).length;
-      return `  ${k} : ${Math.round((wins / v.length) * 100)}% (${v.length})`;
-    });
+    .map(([k, v]) => ({
+      key: k, n: v.length,
+      wr: v.filter((r) => r > 0).length / v.length,
+      avg: v.reduce((a, b) => a + b, 0) / v.length,
+    }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 8);
 }
 
-function convTiers(rows: any[]): string[] {
+function convData(rows: any[]): Stat[] {
   const tiers: [string, number, number][] = [
     ["80-100", 80, 101], ["65-79", 65, 80], ["50-64", 50, 65], ["0-49", 0, 50],
   ];
-  const out: string[] = [];
+  const out: Stat[] = [];
   for (const [label, lo, hi] of tiers) {
     const v = rows.filter((s) =>
-      s.result_7d != null && s.conviction != null &&
-      s.conviction >= lo && s.conviction < hi
+      s.result_7d != null && s.conviction != null && s.conviction >= lo && s.conviction < hi
     ).map((s) => Number(s.result_7d));
     if (!v.length) continue;
-    const wins = v.filter((r) => r > 0).length;
-    out.push(`  ${label} : ${Math.round((wins / v.length) * 100)}% (${v.length})`);
+    out.push({ key: label, n: v.length, wr: v.filter((r) => r > 0).length / v.length,
+               avg: v.reduce((a, b) => a + b, 0) / v.length });
   }
   return out;
+}
+
+function globalStats(rows: any[]) {
+  const closed = rows.filter((s) => s.result_7d != null);
+  const res = closed.map((s) => Number(s.result_7d));
+  const gains = res.filter((r) => r > 0);
+  const losses = res.filter((r) => r <= 0);
+  const pnl = rows.reduce((a, s) => a + (s.realized_pnl_eur != null ? Number(s.realized_pnl_eur) : 0), 0);
+  return {
+    n: closed.length, open: rows.length - closed.length,
+    winRate: closed.length ? gains.length / closed.length : 0,
+    avgGain: gains.length ? gains.reduce((a, b) => a + b, 0) / gains.length : 0,
+    avgLoss: losses.length ? losses.reduce((a, b) => a + b, 0) / losses.length : 0,
+    exp: closed.length ? res.reduce((a, b) => a + b, 0) / closed.length : 0,
+    best: res.length ? Math.max(...res) : 0, worst: res.length ? Math.min(...res) : 0,
+    pnl,
+  };
 }
 
 async function statsMessage(): Promise<string> {
   const rows = await sbSelect("trading_signals",
     "select=result_7d,realized_pnl_eur,sector,cap_bucket,conviction&order=created_at.desc&limit=1000");
-  const closed = rows.filter((s) => s.result_7d != null);
-  if (!closed.length) {
-    return `📈 Performances\nAucun signal clos pour l'instant (${rows.length} en cours).\n` +
+  const g = globalStats(rows);
+  if (g.n === 0) {
+    return `📈 Performances\nAucun signal clos pour l'instant (${g.open} en cours).\n` +
       `Le taux de réussite s'affichera dès les premiers résultats à J+7.`;
   }
-  const res = closed.map((s) => Number(s.result_7d));
-  const gains = res.filter((r) => r > 0);
-  const losses = res.filter((r) => r <= 0);
-  const pnl = rows.reduce((a, s) => a + (s.realized_pnl_eur != null ? Number(s.realized_pnl_eur) : 0), 0);
   const lines = [
     "📈 Performances globales",
-    `Signaux clos : ${closed.length} (${rows.length - closed.length} en cours)`,
-    `Taux de réussite : ${Math.round((gains.length / closed.length) * 100)}%`,
-    `Gain moyen gagnants : ${pct(gains.length ? gains.reduce((a, b) => a + b, 0) / gains.length : 0)} | ` +
-    `perte moyenne : ${pct(losses.length ? losses.reduce((a, b) => a + b, 0) / losses.length : 0)}`,
-    `Espérance/trade : ${pct(res.reduce((a, b) => a + b, 0) / res.length)}`,
-    `P&L paper (1000€/trade) : ${pnl >= 0 ? "+" : ""}${pnl.toFixed(0)}€`,
+    `Signaux clos : ${g.n} (${g.open} en cours)`,
+    `Taux de réussite : ${Math.round(g.winRate * 100)}%`,
+    `Gain moyen gagnants : ${pct(g.avgGain)} | perte moyenne : ${pct(g.avgLoss)}`,
+    `Espérance/trade : ${pct(g.exp)}`,
+    `P&L paper (1000€/trade) : ${g.pnl >= 0 ? "+" : ""}${g.pnl.toFixed(0)}€`,
   ];
-  const block = (title: string, arr: string[]) => arr.length ? ["\n" + title, ...arr] : [];
-  lines.push(...block("🧭 Par secteur :", winrateBy(rows, "sector")));
-  lines.push(...block("📦 Par taille :", winrateBy(rows, "cap_bucket")));
-  lines.push(...block("🎯 Par conviction :", convTiers(rows)));
+  const fmt = (d: Stat[]) => d.map((r) => `  ${r.key} : ${Math.round(r.wr * 100)}% (${r.n})`);
+  const block = (title: string, d: Stat[]) => d.length ? ["\n" + title, ...fmt(d)] : [];
+  lines.push(...block("🧭 Par secteur :", winData(rows, "sector")));
+  lines.push(...block("📦 Par taille :", winData(rows, "cap_bucket")));
+  lines.push(...block("🎯 Par conviction :", convData(rows)));
   return lines.join("\n");
+}
+
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+}
+
+function barRows(d: Stat[]): string {
+  if (!d.length) return '<p class="muted">Pas encore de données.</p>';
+  return d.map((r) => {
+    const wr = r.wr * 100;
+    const color = wr >= 55 ? "#16a34a" : wr >= 45 ? "#eab308" : "#dc2626";
+    return `<div class="row"><span class="lbl">${esc(r.key)}</span>` +
+      `<span class="bar"><span style="width:${wr.toFixed(0)}%;background:${color}"></span></span>` +
+      `<span class="val">${wr.toFixed(0)}% (${r.n})</span></div>`;
+  }).join("");
+}
+
+async function buildHtml(): Promise<string> {
+  const rows = await sbSelect("trading_signals",
+    "select=created_at,ticker,sector,cap_bucket,conviction,result_7d,realized_pnl_eur&order=created_at.desc&limit=1000");
+  const g = globalStats(rows);
+  const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const cards: [string, string][] = [
+    ["Signaux clos", `${g.n}`], ["En cours", `${g.open}`],
+    ["Taux de réussite", `${Math.round(g.winRate * 100)}%`], ["Espérance/trade", pct(g.exp)],
+    ["Gain moyen", pct(g.avgGain)], ["Perte moyenne", pct(g.avgLoss)],
+    ["P&L paper", `${g.pnl >= 0 ? "+" : ""}${g.pnl.toFixed(0)}€`],
+    ["Meilleur / pire", `${pct(g.best)} / ${pct(g.worst)}`],
+  ];
+  const cardsHtml = cards.map(([k, v]) =>
+    `<div class="card"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
+  const recent = rows.slice(0, 25).map((s) => {
+    const r7 = s.result_7d;
+    const res = r7 == null ? '<span class="muted">en cours</span>'
+      : `<span style="color:${Number(r7) > 0 ? "#16a34a" : "#dc2626"}">${pct(Number(r7))}</span>`;
+    return `<tr><td>${esc((s.created_at ?? "").slice(0, 10))}</td><td>${esc(s.ticker ?? "")}</td>` +
+      `<td>${esc(s.sector ?? "—")}</td><td>${s.conviction ?? "—"}</td><td>${res}</td></tr>`;
+  }).join("");
+
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Tableau de bord</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#0f172a;color:#e2e8f0;padding:16px}
+  h1{font-size:20px;margin:0 0 4px}.muted{color:#94a3b8;font-size:13px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:16px 0}
+  .card{background:#1e293b;border-radius:12px;padding:12px}.card .k{font-size:12px;color:#94a3b8}
+  .card .v{font-size:22px;font-weight:700;margin-top:4px}
+  h2{font-size:15px;margin:20px 0 8px;color:#cbd5e1}
+  .row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px}
+  .row .lbl{width:34%}.row .bar{flex:1;background:#334155;border-radius:6px;height:14px;overflow:hidden}
+  .row .bar span{display:block;height:100%}.row .val{width:78px;text-align:right;color:#cbd5e1}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 4px;border-bottom:1px solid #1e293b}th{color:#94a3b8}
+</style></head><body>
+<h1>📊 Agent boursier — Tableau de bord</h1>
+<div class="muted">Généré le ${now} · taux de réussite à J+7</div>
+<div class="cards">${cardsHtml}</div>
+<h2>🧭 Réussite par secteur</h2>${barRows(winData(rows, "sector"))}
+<h2>📦 Réussite par taille de capi</h2>${barRows(winData(rows, "cap_bucket"))}
+<h2>🎯 Réussite par conviction</h2>${barRows(convData(rows))}
+<h2>🕒 Derniers signaux</h2>
+<table><tr><th>Date</th><th>Ticker</th><th>Secteur</th><th>Conv.</th><th>J+7</th></tr>
+${recent || '<tr><td colspan="5" class="muted">Aucun signal.</td></tr>'}</table>
+</body></html>`;
 }
 
 async function paperMessage(): Promise<string> {
@@ -155,6 +242,7 @@ async function diagMessage(): Promise<string> {
 const HELP = `👋 Agent boursier connecté.
 Commandes :
 /stats — performances (réussite par secteur, conviction…)
+/dashboard — tableau de bord visuel (fichier à ouvrir)
 /paper — portefeuille fictif (1000 €/trade)
 /diag — santé du jour (scans, meilleur score)
 /status — état du système
@@ -182,8 +270,11 @@ async function handleCommand(text: string): Promise<string> {
     return `📡 Système actif. Mode : ${mode}.`;
   }
   if (cmd === "/start" || cmd === "/help") return HELP;
-  if (cmd === "/dashboard" || cmd === "/bilan") {
-    return "Cette commande est générée par le bilan automatique (elle arrivera au prochain passage).";
+  if (cmd === "/bilan") {
+    const today = new Date().toISOString().slice(0, 10);
+    const sigs = await sbSelect("trading_signals",
+      `select=ticker&created_at=gte.${today}T00:00:00&created_at=lte.${today}T23:59:59`);
+    return `🗓️ ${sigs.length} signal(aux) aujourd'hui.`;
   }
   return "Commande inconnue. Tape /help.";
 }
@@ -197,14 +288,11 @@ async function handleCallback(data: string): Promise<string> {
   const [key, signalId] = data.split(":", 2);
   if (!(key in map)) return "Action inconnue.";
   const [action, reply] = map[key];
-  if (signalId) {
-    await sbUpdate("trading_signals", `id=eq.${signalId}`, { user_action: action });
-  }
+  if (signalId) await sbUpdate("trading_signals", `id=eq.${signalId}`, { user_action: action });
   return reply;
 }
 
 Deno.serve(async (req) => {
-  // Anti-abus : Telegram renvoie le secret dans cet en-tête
   if (WEBHOOK_SECRET &&
       req.headers.get("x-telegram-bot-api-secret-token") !== WEBHOOK_SECRET) {
     return new Response("unauthorized", { status: 401 });
@@ -217,12 +305,17 @@ Deno.serve(async (req) => {
       await tg("answerCallbackQuery", { callback_query_id: cq.id, text: reply });
       await tg("sendMessage", { chat_id: cq.message.chat.id, text: reply });
     } else if (update.message?.text) {
-      const reply = await handleCommand(update.message.text);
-      await tg("sendMessage", { chat_id: update.message.chat.id, text: reply });
+      const text = update.message.text as string;
+      const chatId = update.message.chat.id as number;
+      if (/^\/dashboard\b/i.test(text.trim())) {
+        const html = await buildHtml();
+        await tgDocument(chatId, "dashboard.html", html, "📊 Tableau de bord — ouvre-le dans ton navigateur");
+      } else {
+        await tg("sendMessage", { chat_id: chatId, text: await handleCommand(text) });
+      }
     }
   } catch (e) {
     console.error("webhook error", e);
   }
-  // On répond toujours 200 pour que Telegram ne ré-essaie pas en boucle
   return new Response("ok");
 });
