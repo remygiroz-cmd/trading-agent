@@ -192,9 +192,7 @@ def run_due(tolerance_min: int = 8) -> dict:
     try:
         if config.BUZZ["enabled"]:
             import buzz
-            bst = buzz._get_state()
-            trial_ok = (not bst.get("start_date")) or not buzz.is_expired(n.date())
-            if trial_ok and not bst.get("recap_sent"):
+            if buzz.is_running(n.date()):
                 if due(config.BUZZ["eu_time"], 120) and not already_done("buzz_EU"):
                     buzz.run_digest("EU", n.date()); mark_done("buzz_EU")
                 if due(config.BUZZ["us_time"], 120) and not already_done("buzz_US"):

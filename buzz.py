@@ -71,11 +71,21 @@ def _start_if_needed(today: dt.date):
 
 
 def is_expired(today: dt.date) -> bool:
+    if config.BUZZ.get("permanent"):
+        return False  # mode permanent : jamais d'expiration
     s = _get_state()
     if not s.get("start_date"):
         return False
     start = dt.date.fromisoformat(s["start_date"])
     return (today - start).days >= config.BUZZ["trial_days"]
+
+
+def is_running(today: dt.date) -> bool:
+    """True si le radar doit tourner (picks du matin + bilan du soir)."""
+    if config.BUZZ.get("permanent"):
+        return True  # toujours actif
+    s = _get_state()
+    return bool(s.get("active")) and not s.get("recap_sent") and not is_expired(today)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -177,9 +187,8 @@ def daily_buzz_check(today: dt.date | None = None) -> dict:
     toute la durée de l'essai. Appelé chaque soir par le scheduler.
     """
     today = today or dt.date.today()
-    s = _get_state()
-    if not s.get("active") or s.get("recap_sent"):
-        return {"sent": False, "reason": "essai inactif"}
+    if not is_running(today):
+        return {"sent": False, "reason": "radar inactif"}
 
     log = state.get_state(LOG_KEY, default=[]) or []
     todays = [e for e in log if e["date"] == today.isoformat()]

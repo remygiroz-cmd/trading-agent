@@ -100,7 +100,8 @@ EARNINGS_FILTER = {
 # ─────────────────────────────────────────────────────────────
 BUZZ = {
     "enabled": True,
-    "trial_days": 7,                 # durée de l'essai (jours calendaires)
+    "permanent": True,               # True = pas de limite 7 jours (bilan du soir chaque jour)
+    "trial_days": 7,                 # durée de l'essai si permanent=False
     "max_picks": 4,
     "eu_time": "08:30",              # avant ouverture Euronext (09:00 Paris)
     "us_time": "09:00",              # le matin, avant la préouverture US (~10:00 Paris)
