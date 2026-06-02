@@ -107,6 +107,42 @@ def set_my_commands(commands: list[tuple[str, str]] | None = None) -> bool:
         return False
 
 
+def set_webhook(url: str, secret: str) -> bool:
+    """Active le webhook Telegram (réponses instantanées via la fonction Supabase)."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        logger.warning("Token Telegram absent — set_webhook ignoré.")
+        return False
+    payload = {
+        "url": url,
+        "secret_token": secret,
+        "allowed_updates": ["message", "callback_query"],
+        "drop_pending_updates": True,
+    }
+    try:
+        r = requests.post(_url("setWebhook"), json=payload, timeout=20)
+        out = r.json()
+        if not out.get("ok"):
+            logger.error("setWebhook KO : %s", out)
+            return False
+        logger.info("Webhook activé : %s", url)
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.error("set_webhook échec : %s", e)
+        return False
+
+
+def delete_webhook() -> bool:
+    """Désactive le webhook (retour à la relève périodique par GitHub Actions)."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        return False
+    try:
+        r = requests.post(_url("deleteWebhook"), json={"drop_pending_updates": False}, timeout=20)
+        return bool(r.json().get("ok"))
+    except Exception as e:  # noqa: BLE001
+        logger.error("delete_webhook échec : %s", e)
+        return False
+
+
 def send_document(file_path: str, caption: str | None = None,
                   chat_id: str | None = None) -> dict | None:
     """Envoie un fichier (ex. dashboard HTML) en pièce jointe."""

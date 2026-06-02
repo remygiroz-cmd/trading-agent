@@ -494,6 +494,17 @@ def main(argv: list[str]):
         from alerts import telegram_bot
         ok = telegram_bot.set_my_commands()
         print("Commandes Telegram déclarées." if ok else "Échec (vérifier le token).")
+    elif cmd == "set-webhook":
+        # python main.py set-webhook <URL_fonction> <SECRET>  (réponses instantanées)
+        from alerts import telegram_bot
+        if len(argv) < 3:
+            print("Usage: python main.py set-webhook <URL> <SECRET>")
+        else:
+            ok = telegram_bot.set_webhook(argv[1], argv[2])
+            print("Webhook activé." if ok else "Échec (vérifier URL/token).")
+    elif cmd == "delete-webhook":
+        from alerts import telegram_bot
+        print("Webhook désactivé." if telegram_bot.delete_webhook() else "Échec.")
     elif cmd == "selftest":
         run_selftest()
     else:
