@@ -331,8 +331,15 @@ def analyze_signal_drivers(min_sample: int = 8) -> list[dict]:
 
 
 def run_weekly_learning() -> dict:
-    """Hebdo (lundi) : règles apprises + attribution des pilotes + recalcul des poids."""
+    """Hebdo (lundi) : règles apprises + attribution + poids globaux + poids par segment."""
     rules = generate_learned_rules()
     driver_rules = analyze_signal_drivers()
     new_weights = weights.recalculate_ai_weights()
-    return {"rules_created": len(rules) + len(driver_rules), "weights": new_weights}
+    segments = {}
+    try:
+        segments = weights.compute_segment_weights()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Poids par segment échoués : %s", e)
+    n_seg = len(segments.get("sector", {})) + len(segments.get("cap", {})) if segments else 0
+    return {"rules_created": len(rules) + len(driver_rules),
+            "weights": new_weights, "segments_differenciated": n_seg}

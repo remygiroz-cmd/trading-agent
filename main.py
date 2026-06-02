@@ -95,6 +95,7 @@ def assemble_signal(ticker: str, snapshot: dict, pattern: dict,
         "divergence": conv["divergence"],
         "suggested_position_pct": conv["suggested_position_pct"],
         "sector": ctx.get("sector") if ctx.get("sector") not in (None, "n/d") else None,
+        "cap_bucket": ctx.get("cap_bucket"),
     }
 
     # Champs d'affichage de l'alerte
@@ -285,7 +286,18 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         # enrichir le contexte IA avec RS et résultats
         ctx["sector_trend"] = (f"force relative {(rs.get('outperformance') or 0)*100:+.1f}% vs marché")
         ctx["next_earnings"] = f"dans {days_e} jours" if days_e is not None else "n/d"
-        debate_out = debate.run_debate(ctx, weights=ai_weights, min_final_score=eff_min_score)
+        # Méta-apprentissage : poids adaptés au segment (secteur / taille de capi)
+        seg_weights, seg_src = ai_weights, "global"
+        try:
+            from memory import weights as weights_mod
+            seg_weights, seg_src = weights_mod.get_weights_for(
+                sector=ctx.get("sector"), cap_bucket=ctx.get("cap_bucket"),
+                global_weights=ai_weights)
+            if seg_src != "global":
+                logger.info("%s : poids par segment (%s)", tk, seg_src)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("get_weights_for KO : %s", e)
+        debate_out = debate.run_debate(ctx, weights=seg_weights, min_final_score=eff_min_score)
 
         res = debate_out["result"]
         detail = {"ticker": tk, "pattern": best["pattern"],

@@ -111,8 +111,9 @@ def build_context(ticker: str, snapshot: dict, pattern: dict, market: dict,
             ctx["fundamentals_context"] = fc["text"]
             ctx["fundamentals_score"] = fc["score_text"]
             ctx["analyst_view"] = fc["analyst_text"]
-            # valeur numérique pour la conviction (non injectée dans les prompts)
+            # valeurs numériques (non injectées dans les prompts)
             ctx["fundamental_score_value"] = fc["score"]
+            ctx["cap_bucket"] = fc.get("cap_bucket")
             # complète secteur / capi si on ne les avait pas
             if ctx["sector"] == "n/d" and fc["sector"] != "n/d":
                 ctx["sector"] = fc["sector"]

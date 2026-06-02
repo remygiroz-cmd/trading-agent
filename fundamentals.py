@@ -197,11 +197,22 @@ def _fmt_cap(cap) -> str:
     return f"{cap:.0f}$"
 
 
+def cap_bucket(market_cap) -> str | None:
+    """Catégorie de capitalisation (small / mid / large) en USD. None si inconnu."""
+    if not market_cap:
+        return None
+    if market_cap < 2e9:
+        return "small"
+    if market_cap < 10e9:
+        return "mid"
+    return "large"
+
+
 def fundamentals_context(ticker: str, price: float | None = None) -> dict:
     """
     Bloc fondamentaux prêt pour les prompts IA.
     Retourne {"text", "score_text", "analyst_text", "sector", "industry",
-              "market_cap", "score"}.
+              "market_cap", "market_cap_value", "cap_bucket", "score"}.
     """
     data = get_fundamentals(ticker)
     if not data:
@@ -209,7 +220,8 @@ def fundamentals_context(ticker: str, price: float | None = None) -> dict:
             "text": "Fondamentaux non disponibles.",
             "score_text": "Santé fondamentale : n/d.",
             "analyst_text": "Consensus analystes : n/d.",
-            "sector": "n/d", "industry": "n/d", "market_cap": "n/d", "score": None,
+            "sector": "n/d", "industry": "n/d", "market_cap": "n/d",
+            "market_cap_value": None, "cap_bucket": None, "score": None,
         }
 
     sc = score_fundamentals(data)
@@ -233,6 +245,8 @@ def fundamentals_context(ticker: str, price: float | None = None) -> dict:
         "sector": data.get("sector") or "n/d",
         "industry": data.get("industry") or "n/d",
         "market_cap": _fmt_cap(data.get("marketCap")),
+        "market_cap_value": data.get("marketCap"),
+        "cap_bucket": cap_bucket(data.get("marketCap")),
         "score": sc["score"],
     }
 

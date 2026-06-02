@@ -132,3 +132,114 @@ def recalculate_ai_weights(min_votes: int = 5, limit: int = 30) -> dict:
     if new_weights:
         normalize_weights()
     return get_current_weights()
+
+
+# ─────────────────────────────────────────────────────────────
+# MÉTA-APPRENTISSAGE : POIDS PAR SEGMENT (taille de capi / secteur)
+# ─────────────────────────────────────────────────────────────
+# Idée : une IA n'est pas également douée partout. DeepSeek (technique) peut
+# exceller sur les small caps nerveuses, Claude (macro) sur les grandes valeurs.
+# On apprend donc un jeu de poids PAR SEGMENT, et on l'utilise quand on a assez
+# de preuves ; sinon on retombe sur les poids globaux.
+#
+# Stockage : un seul blob JSON dans agent_state (clé 'segment_weights'), pas de
+# nouvelle table. Forme :
+#   {"sector": {"Technology": {"weights": {...}, "_sample": 24}, ...},
+#    "cap":    {"small": {"weights": {...}, "_sample": 18}, ...}}
+
+SEGMENT_STATE = "segment_weights"
+SEGMENT_MIN_VOTES = 8     # par IA et par segment, avant de différencier
+
+
+def compute_segment_weights(min_votes: int = SEGMENT_MIN_VOTES, limit: int = 300) -> dict:
+    """
+    Recalcule les poids par segment (secteur, taille de capi) depuis les votes
+    ACHETER joints aux résultats J+7. Appelé chaque semaine. Stocke le blob et
+    le retourne. Une IA sans assez de données sur un segment garde son poids global.
+    """
+    global_w = get_current_weights()
+    # accumulateur : agg[dim][segment][agent] = {"wins":x, "n":y}
+    agg: dict[str, dict[str, dict[str, dict]]] = {"sector": {}, "cap": {}}
+
+    for agent in AGENTS:
+        try:
+            votes = (database.table("ai_votes")
+                     .select("verdict, trading_signals(result_7d, sector, cap_bucket)")
+                     .eq("agent_name", agent)
+                     .eq("verdict", "ACHETER")
+                     .order("created_at", desc=True)
+                     .limit(limit).execute()).data or []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("compute_segment_weights(%s) lecture KO : %s", agent, e)
+            continue
+        for v in votes:
+            ts = v.get("trading_signals")
+            if not ts or ts.get("result_7d") is None:
+                continue
+            won = 1 if float(ts["result_7d"]) > 0 else 0
+            for dim, key in (("sector", ts.get("sector")), ("cap", ts.get("cap_bucket"))):
+                if not key or key == "n/d":
+                    continue
+                a = agg[dim].setdefault(key, {}).setdefault(agent, {"wins": 0, "n": 0})
+                a["n"] += 1
+                a["wins"] += won
+
+    # conversion en poids bornés + normalisés par segment
+    blob: dict[str, dict] = {"sector": {}, "cap": {}}
+    for dim, segs in agg.items():
+        for seg, agents in segs.items():
+            has_specific = any(st["n"] >= min_votes for st in agents.values())
+            if not has_specific:
+                continue  # pas assez de preuve sur ce segment
+            seg_w = {}
+            for agent in AGENTS:
+                st = agents.get(agent)
+                if st and st["n"] >= min_votes:
+                    wr = st["wins"] / st["n"]
+                    seg_w[agent] = max(config.WEIGHT_MIN, min(config.WEIGHT_MAX, wr))
+                else:
+                    seg_w[agent] = global_w.get(agent, config.INITIAL_WEIGHTS.get(agent, 0.33))
+            total = sum(seg_w.values()) or 1.0
+            seg_w = {a: round(w / total, 3) for a, w in seg_w.items()}
+            sample = sum(st["n"] for st in agents.values())
+            blob[dim][seg] = {"weights": seg_w, "_sample": sample}
+
+    try:
+        from . import state
+        state.set_state(SEGMENT_STATE, blob)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Stockage segment_weights KO : %s", e)
+    n_segments = len(blob["sector"]) + len(blob["cap"])
+    logger.info("Poids par segment recalculés : %s segment(s) différenciés", n_segments)
+    return blob
+
+
+def get_weights_for(sector: str | None = None, cap_bucket: str | None = None,
+                    global_weights: dict | None = None) -> tuple[dict, str]:
+    """
+    Poids à utiliser pour un signal donné. Choisit le segment le mieux étayé
+    (secteur ou taille de capi) si on a appris dessus ; sinon poids globaux.
+    Retourne (poids, source) où source explique le choix (pour la traçabilité).
+    """
+    fallback = global_weights or get_current_weights()
+    try:
+        from . import state
+        blob = state.get_state(SEGMENT_STATE, default={}) or {}
+    except Exception:  # noqa: BLE001
+        return fallback, "global"
+
+    candidates = []
+    if sector and blob.get("sector", {}).get(sector):
+        candidates.append((f"secteur:{sector}", blob["sector"][sector]))
+    if cap_bucket and blob.get("cap", {}).get(cap_bucket):
+        candidates.append((f"capi:{cap_bucket}", blob["cap"][cap_bucket]))
+    if not candidates:
+        return fallback, "global"
+
+    # on retient le segment avec le plus de preuves (échantillon le plus grand)
+    src, entry = max(candidates, key=lambda c: c[1].get("_sample", 0))
+    weights = entry.get("weights") or fallback
+    # sécurité : s'assurer que les 3 IA sont présentes
+    for a in AGENTS:
+        weights.setdefault(a, fallback.get(a, config.INITIAL_WEIGHTS.get(a, 0.33)))
+    return weights, src
