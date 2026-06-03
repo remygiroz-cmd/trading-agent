@@ -26,20 +26,30 @@ LOG_KEY = "buzz_log"
 
 SYSTEM = "Tu es un analyste sentiment de marché. Réponds uniquement en JSON valide."
 
-PROMPT = """En cherchant sur X (Twitter), dans les actualités financières et chez les analystes
-au cours des dernières 24h, donne les 3 à 4 actions {scope} qui suscitent le PLUS
-d'optimisme pour la séance de bourse d'aujourd'hui.
+PROMPT = """En cherchant EN DIRECT sur X (Twitter), dans les actualités financières et chez
+les analystes, identifie les 3 à 4 actions {scope} qui ont le plus de chances de
+FORTEMENT MONTER AUJOURD'HUI (la séance qui s'ouvre) — PAS celles qui ont déjà
+monté hier.
 
-Critères : buzz positif en hausse, catalyseur récent (résultats, contrat, annonce),
-avis d'analystes/suiveurs favorables. Uniquement des actions LIQUIDES et tradables.
+Tu cherches l'ANTICIPATION, pas le rétroviseur :
+- catalyseur de cette nuit / ce matin ou imminent : résultats publiés avant l'ouverture,
+  annonce / contrat / rumeur fraîche, relèvement d'analyste de ce matin, décision FDA,
+  fusion-acquisition, guidance relevée, etc.
+- buzz qui ACCÉLÈRE en ce moment (mentions en forte hausse dans les dernières heures)
+- mouvement de préouverture (pre-market) significatif
 
-IMPORTANT : donne le ticker au format Yahoo Finance (ex : "AIR.PA" pour Airbus,
-"NVDA" pour Nvidia, "STMPA.PA" pour STMicro).
+À EXCLURE absolument :
+- les actions qui ont DÉJÀ fait leur gros mouvement hier (catalyseur déjà passé,
+  déjà intégré dans le cours) ;
+- le buzz "rétrospectif" qui ne fait que commenter une hausse passée.
+
+Uniquement des actions LIQUIDES et tradables. Ticker au format Yahoo Finance
+(ex : "AIR.PA" pour Airbus, "NVDA" pour Nvidia, "STMPA.PA" pour STMicro).
 
 Réponds UNIQUEMENT avec ce JSON :
 {{
   "picks": [
-    {{"ticker": "...", "nom": "...", "raison": "[1 phrase courte]", "sentiment": [0-10]}}
+    {{"ticker": "...", "nom": "...", "raison": "[le catalyseur du JOUR et pourquoi ça peut exploser AUJOURD'HUI, 1 phrase]", "sentiment": [0-10]}}
   ]
 }}"""
 
