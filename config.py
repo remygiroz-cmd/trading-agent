@@ -312,6 +312,9 @@ ALERT_RULES = {
     # (un run GitHub Actions est limité à 20 min). Les finalistes sont déjà triés
     # par qualité (meilleurs en premier).
     "max_finalists_per_scan": 8,
+    # Envoi auto du récap (actions étudiées + scores) quand un scan ne déclenche
+    # AUCUNE alerte — pour ne jamais rester sans nouvelles. Respecte le mode pause/digest.
+    "recap_when_no_alert": True,
 }
 
 

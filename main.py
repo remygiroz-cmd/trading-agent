@@ -325,7 +325,34 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
     logger.info("Scan terminé : %s candidats, %s finalistes, %s alertes",
                 summary["candidates"], finalists, summary["alerts"])
     _record_activity(summary)
+
+    # Récap auto si aucune alerte : visibilité même les jours calmes (mode actif seul)
+    if (send_alerts and summary["alerts"] == 0 and not summary.get("suspended")
+            and config.ALERT_RULES.get("recap_when_no_alert", True)):
+        try:
+            from alerts import daily_report, telegram_bot
+            if daily_report.get_alert_mode() == "actif":
+                telegram_bot.send_message(_scan_recap_message(summary))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Récap sans-alerte échoué : %s", e)
     return summary
+
+
+def _scan_recap_message(summary: dict) -> str:
+    """Récap court d'un scan sans alerte : actions étudiées + scores."""
+    seuil = config.ALERT_RULES["min_final_score"]
+    lines = [f"🔍 Scan {summary.get('label', '')} — rien au-dessus du seuil ({seuil}/100)",
+             f"{summary.get('candidates', 0)} candidats · {summary.get('finalists', 0)} "
+             f"étudiés par les IA · meilleur {summary.get('best_score', 0)}/100"]
+    details = sorted(summary.get("details", []), key=lambda d: -(d.get("final_score") or 0))
+    if details:
+        lines.append("\n🧠 Actions étudiées :")
+        for d in details[:10]:
+            pat = f" ({d['pattern']})" if d.get("pattern") else ""
+            lines.append(f"  • {d.get('ticker')}{pat} : {d.get('final_score')}/100")
+    else:
+        lines.append("Aucun setup assez propre pour être étudié ce scan.")
+    return "\n".join(lines)
 
 
 def _record_activity(summary: dict) -> None:
