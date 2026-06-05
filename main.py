@@ -390,6 +390,79 @@ def debate_out_weights():
 
 
 # ─────────────────────────────────────────────────────────────
+# SCREEN D'UNE LISTE DE TICKERS (sans IA) — momentum / RS / fondamentaux
+# ─────────────────────────────────────────────────────────────
+
+def run_screen(tickers: list[str], send: bool = True) -> str:
+    """Analyse rapide (sans IA) d'une liste de tickers et envoie le classement."""
+    import market_context
+    import fundamentals as fund
+    market = data_fetcher.fetch_ticker("^FCHI", period="1y", interval="1d")  # CAC40 (réf France)
+
+    rows = []
+    for tk in tickers:
+        tk = tk.strip().upper()
+        if not tk:
+            continue
+        try:
+            df = data_fetcher.fetch_ticker(tk, period="1y", interval="1d")
+            if df is None or df.empty or len(df) < 70:
+                rows.append({"tk": tk, "ok": False})
+                continue
+            df = data_fetcher.add_indicators(df)
+            snap = data_fetcher.latest_snapshot(df)
+            price = snap.get("price")
+            closes = df["close"].values
+            mom3 = (closes[-1] / closes[-63] - 1) if len(closes) > 63 else None
+            rs = market_context.relative_strength(df, market)
+            fc = fund.fundamentals_context(tk, price=price)
+            ma50 = snap.get("ma50")
+            rows.append({
+                "tk": tk, "ok": True, "price": price, "mom3": mom3,
+                "rs": rs.get("outperformance"), "rsi": snap.get("rsi"),
+                "above_ma50": (price >= ma50) if (price and ma50) else None,
+                "fond": fc.get("score"), "cap": fc.get("cap_bucket"),
+            })
+        except Exception as e:  # noqa: BLE001
+            logger.warning("screen %s KO : %s", tk, e)
+            rows.append({"tk": tk, "ok": False})
+
+    ok = [r for r in rows if r.get("ok")]
+    ko = [r for r in rows if not r.get("ok")]
+    ok.sort(key=lambda r: (r.get("mom3") if r.get("mom3") is not None else -9), reverse=True)
+
+    def fond_lbl(s):
+        if s is None:
+            return "n/d"
+        return "solide" if s >= 70 else "correct" if s >= 45 else "fragile"
+
+    lines = [f"🔎 SCREEN — {len(tickers)} valeurs (sans IA)",
+             "3M=perf 3 mois · RS=vs CAC40 · 🔥>MA50 · ⚠️RSI>75 (déjà tendu)", ""]
+    for i, r in enumerate(ok, 1):
+        mom = f"{r['mom3']*100:+.0f}%" if r.get("mom3") is not None else "n/d"
+        rsv = f"{r['rs']*100:+.0f}%" if r.get("rs") is not None else "n/d"
+        rsi = f"{r['rsi']:.0f}" if r.get("rsi") is not None else "?"
+        trend = "🔥" if r.get("above_ma50") else "·"
+        hot = " ⚠️" if (r.get("rsi") or 0) > 75 else ""
+        lines.append(f"{i}. {r['tk']}  3M {mom} · RS {rsv} · RSI {rsi}{trend}{hot} · "
+                     f"fond:{fond_lbl(r.get('fond'))} · {r.get('cap') or '?'}")
+    if ko:
+        lines.append("\n✖ Données indisponibles : " + ", ".join(r["tk"] for r in ko))
+    lines.append("\nℹ️ Lecture rapide, pas une reco. 🔥+RS positif = vrai leader ; "
+                 "⚠️RSI>75 = risque d'acheter trop tard.")
+    msg = "\n".join(lines)
+
+    print(msg)
+    if send:
+        try:
+            from alerts import telegram_bot
+            telegram_bot.send_message(msg)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Envoi screen échoué : %s", e)
+    return msg
+
+
+# ─────────────────────────────────────────────────────────────
 # CLI
 # ─────────────────────────────────────────────────────────────
 
@@ -435,6 +508,12 @@ def main(argv: list[str]):
     logging.getLogger("data_fetcher").setLevel(logging.WARNING)
 
     cmd = argv[0] if argv else "scan"
+
+    # Normalisation : un déclencheur externe peut passer toute la commande en un
+    # seul argument entre guillemets (ex. "screen SOI.PA XFAB.PA"). On re-découpe.
+    if len(argv) == 1 and " " in argv[0]:
+        argv = argv[0].split()
+        cmd = argv[0]
 
     if cmd == "scan":
         label = argv[1] if len(argv) > 1 else "manuel"
@@ -520,6 +599,9 @@ def main(argv: list[str]):
             print(f"{k}: {v}")
         if not apply:
             print("(simulation — ajoute --apply pour écrire le réglage)")
+    elif cmd == "screen":
+        # python main.py screen TICKER1 TICKER2 ...  (analyse sans IA + envoi Telegram)
+        run_screen(argv[1:])
     elif cmd == "setup-telegram":
         # Déclare le menu de commandes du bot à Telegram (menu '/')
         from alerts import telegram_bot
