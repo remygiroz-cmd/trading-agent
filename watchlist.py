@@ -65,9 +65,18 @@ MID_CAPS_EU = [
 ]
 
 
+# Pépites tech FR repérées au screening (momentum FORT + fondamental SOLIDE).
+# Ajoutées manuellement pour surveillance permanente.
+FRENCH_TECH_MOMENTUM = [
+    "ALSEM.PA",   # Semco Technologies (équipements semi/solaire)
+    "PLNW.PA",    # Planisware (logiciel)
+    "ALPRG.PA",   # Prologue (logiciel / cloud)
+]
+
+
 def get_fixed_watchlist() -> list[str]:
     """Retourne les tickers fixes, dédupliqués en conservant l'ordre."""
-    combined = AI_SMALL_CAPS_US + AI_SMALL_CAPS_FR + MID_CAPS_EU
+    combined = AI_SMALL_CAPS_US + AI_SMALL_CAPS_FR + MID_CAPS_EU + FRENCH_TECH_MOMENTUM
     seen = set()
     out = []
     for t in combined:
