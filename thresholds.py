@@ -124,8 +124,8 @@ def format_report(res: dict) -> str:
     return "\n".join(lines)
 
 
-def run(send: bool = True) -> str:
-    msg = format_report(simulate())
+def run(send: bool = True, levels=LEVELS) -> str:
+    msg = format_report(simulate(levels))
     print(msg)
     if send:
         try:

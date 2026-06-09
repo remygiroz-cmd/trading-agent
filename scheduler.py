@@ -100,6 +100,46 @@ def send_daily_report_now() -> None:
     except Exception as e:  # noqa: BLE001
         logger.warning("Bilan buzz du soir échoué : %s", e)
 
+    # 4. Simulation des seuils CHAQUE SOIR (70 / 65 / 60)
+    try:
+        import thresholds
+        thresholds.run(send=True, levels=(70, 65, 60))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Simulation seuils du soir échouée : %s", e)
+
+    # 5. Récap GLOBAL de la semaine — le vendredi soir
+    try:
+        if now_paris().weekday() == 4:  # vendredi
+            _send_weekly_recap()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Récap hebdo échoué : %s", e)
+
+
+def _send_weekly_recap() -> None:
+    """Récap global de la semaine (perf + simulation des seuils + buzz)."""
+    from alerts import telegram_bot
+    parts = ["📅 RÉCAP DE LA SEMAINE", "━━━━━━━━━━━━━━━━━━━━━"]
+    try:
+        import dashboard
+        parts.append(dashboard.build_text_summary())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Perf hebdo indisponible : %s", e)
+    try:
+        import thresholds
+        parts.append("\n" + thresholds.format_report(thresholds.simulate((70, 65, 60))))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from memory import state
+        t = state.get_state("buzz_daily_tally", default=None)
+        if t and t.get("trades"):
+            wr = t["wins"] / t["trades"] * 100
+            parts.append(f"\n📡 Buzz (cumul essai) : {t['wins']}/{t['trades']} gagnants "
+                         f"({wr:.0f}%), {t['pnl']:+,.0f} €")
+    except Exception:  # noqa: BLE001
+        pass
+    telegram_bot.send_message("\n".join(parts))
+
 
 def trigger_weekly_tasks() -> None:
     """Tâches du lundi matin : watchlist dynamique + règles apprises + recalcul poids."""
@@ -117,12 +157,6 @@ def trigger_weekly_tasks() -> None:
                     res["rules_created"], res["weights"])
     except Exception as e:  # noqa: BLE001
         logger.warning("Apprentissage hebdo échoué : %s", e)
-    # Simulation des seuils (combien aurais-tu gagné à 75/65/60/55 ?)
-    try:
-        import thresholds
-        thresholds.run(send=True)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("Simulation seuils hebdo échouée : %s", e)
 
 
 def _week_win_rate() -> float:
