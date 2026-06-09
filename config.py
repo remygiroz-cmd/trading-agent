@@ -336,6 +336,26 @@ GOOGLE_SHEETS_WEBHOOK_URL = os.getenv("GOOGLE_SHEETS_WEBHOOK_URL", "")
 
 
 # ─────────────────────────────────────────────────────────────
+# SUIVI BITCOIN — MVRV Z-Score + calendrier halving (cf. btc_mvrv.py, halving.py)
+# Vérifiés 1x/jour. Alertes uniquement au franchissement de seuil (anti-spam).
+# ─────────────────────────────────────────────────────────────
+BTC_MVRV = {
+    "enabled": True,
+    # API publique gratuite (bitcoin-data.com). Renvoie la dernière valeur du MVRV Z-Score.
+    "api_url": "https://bitcoin-data.com/v1/mvrv-zscore/last",
+}
+
+HALVING = {
+    "enabled": True,
+    # Estimation du prochain halving (ajustable). Le signal ACHAT = halving - 500 j
+    # (~nov. 2026), le signal VENTE = halving + 500 j (~août 2029).
+    "halving_date": "2028-03-29",
+    "offset_days": 500,
+    "milestones": [30, 7, 0],   # J-30, J-7, J-0
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # DONNÉES MARCHÉ (sources)
 # ─────────────────────────────────────────────────────────────
 

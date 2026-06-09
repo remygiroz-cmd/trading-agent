@@ -604,6 +604,14 @@ def main(argv: list[str]):
             print(f"{k}: {v}")
         if not apply:
             print("(simulation — ajoute --apply pour écrire le réglage)")
+    elif cmd == "mvrv":
+        # python main.py mvrv [--send]  — vérifie le MVRV Z-Score Bitcoin
+        import btc_mvrv
+        print(btc_mvrv.check(send="--send" in argv))
+    elif cmd == "halving":
+        # python main.py halving [--send]  — vérifie le calendrier 500j halving
+        import halving
+        print(halving.check(send="--send" in argv))
     elif cmd == "thresholds":
         # python main.py thresholds  — simule "et si le seuil avait été 65/60/55"
         import thresholds

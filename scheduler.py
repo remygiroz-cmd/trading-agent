@@ -196,6 +196,21 @@ def run_due(tolerance_min: int = 8) -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("Récap buzz échoué : %s", e)
 
+    # Suivi Bitcoin (MVRV Z-Score + calendrier halving) — 1x/jour, tous les jours
+    # (la crypto se traite 24/7, donc avant le filtre jour ouvré).
+    try:
+        from memory import state as _st
+        if _st.get_state("btc_last_check", default="") != n.date().isoformat():
+            if config.BTC_MVRV["enabled"]:
+                import btc_mvrv
+                btc_mvrv.check()
+            if config.HALVING["enabled"]:
+                import halving
+                halving.check(today=n.date())
+            _st.set_state("btc_last_check", n.date().isoformat())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Suivi Bitcoin échoué : %s", e)
+
     if not is_trading_day(n.date()):
         logger.info("Jour non ouvré — commandes traitées, pas de scan.")
         return {"skipped": "week-end"}
