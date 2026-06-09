@@ -117,6 +117,12 @@ def trigger_weekly_tasks() -> None:
                     res["rules_created"], res["weights"])
     except Exception as e:  # noqa: BLE001
         logger.warning("Apprentissage hebdo échoué : %s", e)
+    # Simulation des seuils (combien aurais-tu gagné à 75/65/60/55 ?)
+    try:
+        import thresholds
+        thresholds.run(send=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Simulation seuils hebdo échouée : %s", e)
 
 
 def _week_win_rate() -> float:

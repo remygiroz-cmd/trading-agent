@@ -376,7 +376,12 @@ def _record_activity(summary: dict) -> None:
                          "final_score": d.get("final_score"), "alert": d.get("alert")}
                         for d in summary.get("details", [])],
         })
-        state.set_state("activity", {today: day})  # ne conserve qu'aujourd'hui
+        # On conserve 14 jours d'historique (pour la simulation des seuils),
+        # au lieu d'écraser chaque jour.
+        log[today] = day
+        cutoff = (dt.date.today() - dt.timedelta(days=14)).isoformat()
+        log = {d: v for d, v in log.items() if d >= cutoff}
+        state.set_state("activity", log)
     except Exception as e:  # noqa: BLE001
         logger.warning("Enregistrement activité échoué : %s", e)
 
@@ -599,6 +604,10 @@ def main(argv: list[str]):
             print(f"{k}: {v}")
         if not apply:
             print("(simulation — ajoute --apply pour écrire le réglage)")
+    elif cmd == "thresholds":
+        # python main.py thresholds  — simule "et si le seuil avait été 65/60/55"
+        import thresholds
+        thresholds.run(send="--send" in argv)
     elif cmd == "screen":
         # python main.py screen TICKER1 TICKER2 ...  (analyse sans IA + envoi Telegram)
         run_screen(argv[1:])
