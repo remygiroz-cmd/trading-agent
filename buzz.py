@@ -24,7 +24,8 @@ logger = logging.getLogger("buzz")
 STATE_KEY = "buzz_state"
 LOG_KEY = "buzz_log"
 
-SYSTEM = "Tu es un analyste sentiment de marché. Réponds uniquement en JSON valide."
+SYSTEM = ("Tu es un analyste sentiment de marché. Tu rédiges TOUJOURS en français "
+          "(y compris pour les actions américaines). Réponds uniquement en JSON valide.")
 
 PROMPT = """En cherchant EN DIRECT sur X (Twitter), dans les actualités financières et chez
 les analystes, identifie les 3 à 4 actions {scope} qui ont le plus de chances de
@@ -45,6 +46,9 @@ Tu cherches l'ANTICIPATION, pas le rétroviseur :
 
 Uniquement des actions LIQUIDES et tradables. Ticker au format Yahoo Finance
 (ex : "AIR.PA" pour Airbus, "NVDA" pour Nvidia, "STMPA.PA" pour STMicro).
+
+IMPORTANT : rédige TOUT EN FRANÇAIS — le "nom" et la "raison" doivent être en
+français, même pour les actions américaines (traduis si la source est en anglais).
 
 Réponds UNIQUEMENT avec ce JSON :
 {{
