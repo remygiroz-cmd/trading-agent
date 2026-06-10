@@ -255,6 +255,10 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
             continue
         df = data_fetcher.add_indicators(df)
         snap = data_fetcher.latest_snapshot(df)
+        if not snap.get("price"):
+            # sans prix d'entrée, le signal serait inexploitable (P&L incalculable)
+            logger.warning("%s écarté : prix indisponible.", tk)
+            continue
         scan = patterns.scan_ticker(df, {"price": snap.get("price"), "ma50": snap.get("ma50")},
                                     market["bullish"])
         best = scan["best"]

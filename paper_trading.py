@@ -137,8 +137,9 @@ def compute_portfolio(live: bool = False) -> dict:
             invested_closed += stake
             if res > 0:
                 wins += 1
-            else:
+            elif res < 0:
                 losses += 1
+            # res == 0 (break-even) : ni gagnant ni perdant
         else:
             # position encore ouverte : P&L latent (prix live ou dernier résultat connu)
             res, horizon = _latest_result(r)

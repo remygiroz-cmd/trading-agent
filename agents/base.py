@@ -32,6 +32,41 @@ def _fallback(reason: str) -> dict:
     }
 
 
+def _first_balanced_json(text: str) -> dict | None:
+    """
+    Extrait le PREMIER objet {...} réellement équilibré (comptage d'accolades,
+    en ignorant celles à l'intérieur des chaînes). Un regex gourmand `\\{.*\\}`
+    capturerait du premier '{' au DERNIER '}' : si l'IA écrit du texte ou un
+    second objet après son JSON, le parse échouait et le vote était perdu.
+    """
+    start = text.find("{")
+    while start != -1:
+        depth, in_str, esc = 0, False, False
+        for i in range(start, len(text)):
+            c = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+                continue
+            if c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start:i + 1])
+                    except json.JSONDecodeError:
+                        break  # objet mal formé -> essayer à partir du '{' suivant
+        start = text.find("{", start + 1)
+    return None
+
+
 def parse_json_response(text: str) -> dict:
     """Extrait un objet JSON depuis la réponse brute d'une IA."""
     if not text:
@@ -46,13 +81,10 @@ def parse_json_response(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Extraire le premier bloc {...} équilibré
-    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            pass
+    # Extraire le premier objet {...} équilibré
+    obj = _first_balanced_json(cleaned)
+    if obj is not None:
+        return obj
 
     logger.warning("JSON non parsable : %s", text[:200])
     return _fallback("JSON illisible")
