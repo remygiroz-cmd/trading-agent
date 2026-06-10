@@ -371,6 +371,19 @@ BUDGET_SIM = {
 
 
 # ─────────────────────────────────────────────────────────────
+# RESTRICTION TRADE REPUBLIC
+# TR n'a pas d'API publique de catalogue : on ne peut pas vérifier la dispo par
+# programme. On s'en approche : (1) consigne forte dans le buzz (grandes bourses,
+# liquide, pas d'OTC/penny), (2) liste d'exclusion curée que Rémy complète.
+# ─────────────────────────────────────────────────────────────
+TRADE_REPUBLIC = {
+    # Tickers connus comme NON disponibles sur Trade Republic (à compléter au fil
+    # de l'eau). Exclus à la fois du radar buzz et de la watchlist surveillée.
+    "exclude": [],
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # DONNÉES MARCHÉ (sources)
 # ─────────────────────────────────────────────────────────────
 

@@ -44,8 +44,13 @@ Tu cherches l'ANTICIPATION, pas le rétroviseur :
   déjà intégré dans le cours) ;
 - le buzz "rétrospectif" qui ne fait que commenter une hausse passée.
 
-Uniquement des actions LIQUIDES et tradables. Ticker au format Yahoo Finance
-(ex : "AIR.PA" pour Airbus, "NVDA" pour Nvidia, "STMPA.PA" pour STMicro).
+Uniquement des actions LIQUIDES et tradables, **disponibles à l'achat sur Trade
+Republic** : cotées sur les grandes bourses (Nasdaq, NYSE, Euronext Paris, Xetra),
+capitalisation moyenne ou grande. INTERDIT : penny stocks (< 5 $), valeurs OTC /
+pink sheets, micro-caps obscures, ADR exotiques — ce ne sont PAS sur Trade Republic.
+
+Ticker au format Yahoo Finance (ex : "AIR.PA" pour Airbus, "NVDA" pour Nvidia,
+"STMPA.PA" pour STMicro).
 
 IMPORTANT : rédige TOUT EN FRANÇAIS — le "nom" et la "raison" doivent être en
 français, même pour les actions américaines (traduis si la source est en anglais).
@@ -157,7 +162,12 @@ def run_digest(session: str, today: dt.date | None = None) -> dict:
         return {"session": session, "picks": [], "error": str(e)[:120]}
 
     parsed = agent_base.parse_json_response(text)
-    picks = parsed.get("picks", [])[: config.BUZZ["max_picks"]]
+    picks = parsed.get("picks", [])
+    # Filtre Trade Republic : retire les tickers connus comme indisponibles
+    exclude = {t.upper() for t in config.TRADE_REPUBLIC.get("exclude", [])}
+    if exclude:
+        picks = [p for p in picks if str(p.get("ticker", "")).upper() not in exclude]
+    picks = picks[: config.BUZZ["max_picks"]]
 
     # Journalisation des picks + du coût réel
     log = state.get_state(LOG_KEY, default=[]) or []

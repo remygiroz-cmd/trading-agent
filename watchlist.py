@@ -137,7 +137,13 @@ def get_full_watchlist(blacklist: set[str] | None = None) -> list[str]:
     Retourne la watchlist complète : fixes + dynamiques, dédupliquée.
     Exclut les tickers blacklistés (jamais réintégrés automatiquement).
     """
-    blacklist = blacklist or set()
+    blacklist = set(blacklist or set())
+    # Exclusion Trade Republic (valeurs non disponibles, curées par Rémy)
+    try:
+        import config
+        blacklist |= {t for t in config.TRADE_REPUBLIC.get("exclude", [])}
+    except Exception:  # noqa: BLE001
+        pass
     fixed = get_fixed_watchlist()
     dynamic = load_dynamic_watchlist()
 
