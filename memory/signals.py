@@ -109,6 +109,30 @@ def get_open_signals(max_age_days: int = 8) -> list[dict]:
         return []
 
 
+def get_unresolved_signals(max_age_days: int = 30) -> list[dict]:
+    """
+    Signaux dont le résultat J+7 n'est PAS encore connu — Y COMPRIS ceux dont le
+    stop ou l'objectif a déjà été touché. Indispensable pour l'apprentissage :
+    si on exclut les trades stoppés du suivi, result_7d ne se remplit jamais pour
+    eux et ils disparaissent des statistiques (biais du survivant : le bot ne
+    voit que ses "bons" trades et surestime son taux de réussite).
+    """
+    import datetime as dt
+    try:
+        res = (database.table(SIGNALS)
+               .select("*")
+               .is_("result_7d", "null")
+               .order("created_at", desc=True)
+               .limit(500)
+               .execute())
+        rows = res.data or []
+    except Exception as e:  # noqa: BLE001
+        logger.error("get_unresolved_signals échec : %s", e)
+        return []
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=max_age_days)).isoformat()
+    return [r for r in rows if (r.get("created_at") or "") >= cutoff]
+
+
 def get_today_signals(date_iso: str | None = None) -> list[dict]:
     """Signaux créés aujourd'hui (ou à une date donnée AAAA-MM-JJ)."""
     try:

@@ -315,6 +315,9 @@ ALERT_RULES = {
     # Envoi auto du récap (actions étudiées + scores) quand un scan ne déclenche
     # AUCUNE alerte — pour ne jamais rester sans nouvelles. Respecte le mode pause/digest.
     "recap_when_no_alert": True,
+    # Tour 2 du débat uniquement si les IA ne sont pas unanimes au Tour 1
+    # (la lecture croisée ne change presque jamais un verdict unanime ; ÷2 sur le coût IA)
+    "round2_only_on_disagreement": True,
 }
 
 

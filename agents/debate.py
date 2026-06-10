@@ -109,6 +109,14 @@ def run_debate(ctx: dict, weights: dict | None = None, do_round2: bool = True,
     final_votes = round1
     round2 = None
 
+    # Économie : si les 3 IA sont déjà UNANIMES au Tour 1, la lecture croisée ne
+    # change quasiment jamais l'issue — on saute le Tour 2 (÷2 sur le coût IA).
+    if do_round2 and config.ALERT_RULES.get("round2_only_on_disagreement", True):
+        verdicts = {v.get("verdict", "IGNORER") for v in round1.values()}
+        if len(verdicts) == 1:
+            logger.info("[T2] sauté : verdict unanime (%s) au Tour 1.", verdicts.pop())
+            do_round2 = False
+
     # ── TOUR 2 : lecture croisée ──
     if do_round2:
         round2 = {}

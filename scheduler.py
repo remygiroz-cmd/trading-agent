@@ -160,10 +160,19 @@ def trigger_weekly_tasks() -> None:
 
 
 def _week_win_rate() -> float:
+    """Taux de réussite des signaux RÉSOLUS des 7 derniers jours.
+
+    NB : l'ancienne version lisait result_7d sur les signaux *ouverts* (qui par
+    définition n'en ont pas) -> affichait toujours 0%.
+    """
     try:
-        from memory import signals
-        sigs = signals.get_open_signals()  # approximation : derniers signaux
-        done = [float(s["result_7d"]) for s in sigs if s.get("result_7d") is not None]
+        from memory import database
+        week_ago = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=10)).isoformat()
+        rows = (database.table("trading_signals")
+                .select("result_7d, created_at")
+                .gte("created_at", week_ago)
+                .execute()).data or []
+        done = [float(r["result_7d"]) for r in rows if r.get("result_7d") is not None]
         if not done:
             return 0.0
         return sum(1 for r in done if r > 0) / len(done)

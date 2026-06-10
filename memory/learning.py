@@ -30,9 +30,16 @@ def _parse_dt(s: str) -> dt.datetime:
 
 
 def update_open_signal_results(now: dt.datetime | None = None) -> dict:
-    """Met à jour les signaux ouverts avec le prix actuel. Retourne un résumé."""
+    """
+    Met à jour les signaux non résolus avec le prix actuel. Retourne un résumé.
+
+    On suit TOUS les signaux jusqu'à J+7 (même ceux dont le stop/objectif a déjà
+    été touché) : sinon result_7d ne se remplit jamais pour les trades stoppés et
+    tout l'apprentissage (poids IA, perf ticker, règles) ne voit que les
+    survivants -> taux de réussite artificiellement gonflé.
+    """
     now = now or dt.datetime.now(dt.timezone.utc)
-    open_signals = signals.get_open_signals()
+    open_signals = signals.get_unresolved_signals()
     updated, stops, targets = 0, 0, 0
 
     # Récupération groupée des prix
@@ -56,10 +63,10 @@ def update_open_signal_results(now: dt.datetime | None = None) -> dict:
         signals.update_signal_result(s["id"], days, result)
         updated += 1
 
-        if s.get("stop_loss") and price <= float(s["stop_loss"]):
+        if not s.get("stop_reached") and s.get("stop_loss") and price <= float(s["stop_loss"]):
             signals.mark_stop_reached(s["id"])
             stops += 1
-        if s.get("target_price") and price >= float(s["target_price"]):
+        if not s.get("target_reached") and s.get("target_price") and price >= float(s["target_price"]):
             signals.mark_target_reached(s["id"])
             targets += 1
 
