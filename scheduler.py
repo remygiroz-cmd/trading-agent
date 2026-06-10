@@ -107,6 +107,13 @@ def send_daily_report_now() -> None:
     except Exception as e:  # noqa: BLE001
         logger.warning("Simulation seuils du soir échouée : %s", e)
 
+    # 4bis. Simulation budget réel (1500 €) — chaque soir
+    try:
+        import budget_sim
+        budget_sim.run(send=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Simulation budget du soir échouée : %s", e)
+
     # 5. Récap GLOBAL de la semaine — le vendredi soir
     try:
         if now_paris().weekday() == 4:  # vendredi
@@ -127,6 +134,11 @@ def _send_weekly_recap() -> None:
     try:
         import thresholds
         parts.append("\n" + thresholds.format_report(thresholds.simulate((70, 65, 60))))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import budget_sim
+        parts.append("\n" + budget_sim.format_report(budget_sim.simulate()))
     except Exception:  # noqa: BLE001
         pass
     try:

@@ -359,6 +359,18 @@ HALVING = {
 
 
 # ─────────────────────────────────────────────────────────────
+# SIMULATION BUDGET RÉEL (cf. budget_sim.py)
+# Un porte-monnaie unique au budget FIXE qui suit les signaux du bot, sans
+# pouvoir dépasser le budget. Une simulation par seuil pour comparer.
+# ─────────────────────────────────────────────────────────────
+BUDGET_SIM = {
+    "budget": 1500.0,            # capital de départ simulé
+    "levels": [75, 70, 65, 60],  # seuils comparés (un porte-monnaie chacun)
+    "per_trade_pct": 0.25,       # part du budget engagée par trade (~4 positions max en //)
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # DONNÉES MARCHÉ (sources)
 # ─────────────────────────────────────────────────────────────
 
