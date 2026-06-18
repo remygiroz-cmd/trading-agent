@@ -620,6 +620,10 @@ def main(argv: list[str]):
         # python main.py thresholds  — simule "et si le seuil avait été 65/60/55"
         import thresholds
         thresholds.run(send="--send" in argv)
+    elif cmd == "simdetail":
+        # python main.py simdetail  — détail trade par trade des simulations
+        import thresholds
+        thresholds.detail(send="--send" in argv)
     elif cmd == "budget":
         # python main.py budget  — simule "si j'avais investi 1500€ en suivant le bot"
         import budget_sim

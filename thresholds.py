@@ -136,6 +136,98 @@ def run(send: bool = True, levels=LEVELS) -> str:
     return msg
 
 
+# ─────────────────────────────────────────────────────────────
+# DÉTAIL TRADE PAR TRADE
+# ─────────────────────────────────────────────────────────────
+
+def collect_finalists() -> list[tuple]:
+    """Finalistes uniques (date, ticker, meilleur score), triés par date."""
+    from memory import state
+    log = state.get_state("activity", default={}) or {}
+    best: dict[tuple, float] = {}
+    for d, runs in log.items():
+        for r in runs:
+            for det in (r.get("details") or []):
+                tk, sc = det.get("ticker"), det.get("final_score")
+                if not tk or sc is None:
+                    continue
+                best[(d, tk)] = max(best.get((d, tk), -1), float(sc))
+    return sorted(((d, tk, sc) for (d, tk), sc in best.items()), key=lambda x: x[0])
+
+
+def _trade_detail(df, date_iso: str):
+    """Détail d'un trade : entrée/sortie (dates, prix, raison, %). None si en cours."""
+    if df is None or df.empty:
+        return None
+    idx = [ts.date().isoformat() for ts in df.index]
+    after = [i for i, dd in enumerate(idx) if dd >= date_iso]
+    if not after:
+        return None
+    i0 = after[0]
+    entry = float(df["close"].iloc[i0])
+    if entry <= 0:
+        return None
+    lv = market_context.compute_levels(entry, _atr_pct(df, i0))
+    target, stop, hor = lv["target"], lv["stop"], int(lv["horizon"])
+    fut = df.iloc[i0 + 1: i0 + 1 + hor]
+    if fut.empty:
+        return None
+    base = {"entry_date": idx[i0], "entry": entry}
+    for ts, row in fut.iterrows():
+        if float(row["low"]) <= stop:
+            return {**base, "exit_date": ts.date().isoformat(), "exit": stop,
+                    "reason": "stop", "pct": (stop - entry) / entry}
+        if float(row["high"]) >= target:
+            return {**base, "exit_date": ts.date().isoformat(), "exit": target,
+                    "reason": "objectif", "pct": (target - entry) / entry}
+    if len(fut) >= hor:
+        ts = fut.index[-1]
+        px = float(fut.iloc[-1]["close"])
+        return {**base, "exit_date": ts.date().isoformat(), "exit": px,
+                "reason": "horizon", "pct": (px - entry) / entry}
+    return None  # encore en cours
+
+
+def detail(send: bool = True, min_score: int = 60) -> str:
+    """Liste détaillée de chaque trade simulé (>= min_score)."""
+    finalists = [(d, tk, sc) for (d, tk, sc) in collect_finalists() if sc >= min_score]
+    if not finalists:
+        return "Aucun finaliste à détailler sur la période."
+    bars = data_fetcher.fetch_batch(list({tk for _, tk, _ in finalists}),
+                                    period="3mo", interval="1d")
+    closed, ongoing = [], []
+    for (d, tk, sc) in finalists:
+        det = _trade_detail(bars.get(tk), d)
+        if det:
+            closed.append((tk, sc, det))
+        else:
+            ongoing.append((tk, sc, d))
+
+    lines = ["🔍 DÉTAIL DES TRADES SIMULÉS",
+             "(achat à la clôture du jour étudié, vente à l'objectif/stop/horizon)", ""]
+    closed.sort(key=lambda x: x[2]["entry_date"])
+    for tk, sc, det in closed:
+        emoji = "✅" if det["pct"] > 0 else "❌" if det["pct"] < 0 else "➖"
+        lines.append(
+            f"{emoji} {tk} (score {sc:.0f})\n"
+            f"   achat {det['entry_date']} à {det['entry']:.2f} → "
+            f"vente {det['exit_date']} à {det['exit']:.2f} ({det['reason']}) "
+            f"= {det['pct']*100:+.1f}%")
+    if ongoing:
+        lines.append("\n⏳ Encore en cours (pas encore vendus) :")
+        for tk, sc, d in ongoing:
+            lines.append(f"   {tk} (score {sc:.0f}) — étudié le {d}")
+    msg = "\n".join(lines)
+    print(msg)
+    if send:
+        try:
+            from alerts import telegram_bot
+            telegram_bot.send_message(msg)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Envoi détail trades échoué : %s", e)
+    return msg
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     run(send=False)
