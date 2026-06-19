@@ -312,6 +312,22 @@ def run_scan(label: str = "manuel", markets: list[str] | None = None,
         if res["send_alert"]:
             assembled = assemble_signal(tk, snap, best, debate_out, is_paper=paper, ctx=ctx,
                                         regime_mult=regime["size_mult"])
+            # Gestionnaire de portefeuille : contrôle de l'exposition globale
+            try:
+                import portfolio
+                pcheck = portfolio.evaluate(assembled["record"].get("sector"),
+                                            assembled["record"].get("suggested_position_pct") or 0)
+                if not pcheck["allowed"]:
+                    logger.info("%s : alerte bloquée par le portefeuille (%s)", tk, pcheck["reason"])
+                    detail["alert"] = False
+                    detail["blocked"] = pcheck["reason"]
+                    continue
+                if pcheck["pos_pct"] != (assembled["record"].get("suggested_position_pct") or 0):
+                    assembled["record"]["suggested_position_pct"] = pcheck["pos_pct"]
+                    assembled["display"]["suggested_position_pct"] = pcheck["pos_pct"]
+                    assembled["display"]["portfolio_note"] = pcheck["reason"]
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Contrôle portefeuille échoué : %s", e)
             assembled["display"]["regime_label"] = regime["label"]
             # Clustering sectoriel : compte ce secteur sur la journée (scans inclus)
             sec = assembled["record"].get("sector")
@@ -624,6 +640,11 @@ def main(argv: list[str]):
         # python main.py simdetail  — détail trade par trade des simulations
         import thresholds
         thresholds.detail(send="--send" in argv)
+    elif cmd == "backtest-report":
+        # python main.py backtest-report [annees] [--send]
+        import backtest_report
+        yrs = next((int(a) for a in argv[1:] if a.isdigit()), 3)
+        backtest_report.run_report(yrs, send="--send" in argv)
     elif cmd == "budget":
         # python main.py budget  — simule "si j'avais investi 1500€ en suivant le bot"
         import budget_sim

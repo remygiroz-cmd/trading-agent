@@ -216,6 +216,8 @@ def format_alert(s: dict) -> str:
         msg += f"\n🎯 {s['conviction_text']}"
     if s.get("sector_note"):
         msg += f"\n{s['sector_note']}"
+    if s.get("portfolio_note"):
+        msg += f"\n⚖️ Portefeuille : {s['portfolio_note']}"
     if s.get("divergence_text"):
         msg += f"\n⚠️ Divergence : {s['divergence_text']}"
     if s.get("claude_warning"):

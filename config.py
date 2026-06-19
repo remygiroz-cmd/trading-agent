@@ -384,6 +384,21 @@ TRADE_REPUBLIC = {
 
 
 # ─────────────────────────────────────────────────────────────
+# GESTIONNAIRE DE PORTEFEUILLE (cf. portfolio.py)
+# Raisonne au niveau du PORTEFEUILLE, pas seulement signal par signal : limite
+# le nombre de positions, l'exposition par secteur et l'exposition totale, pour
+# éviter de tout miser sur le même thème (inspiré de TradingAgents).
+# ─────────────────────────────────────────────────────────────
+PORTFOLIO = {
+    "enabled": True,
+    "max_concurrent": 8,              # nb max de positions ouvertes en même temps
+    "max_per_sector": 3,              # nb max de positions par secteur
+    "max_total_exposure_pct": 80.0,   # % max du capital engagé au total
+    "max_sector_exposure_pct": 35.0,  # % max du capital engagé sur un seul secteur
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # DONNÉES MARCHÉ (sources)
 # ─────────────────────────────────────────────────────────────
 

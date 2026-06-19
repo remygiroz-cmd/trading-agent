@@ -99,8 +99,25 @@ def build_context(ticker: str, snapshot: dict, pattern: dict, market: dict,
             nc = news.news_context(ticker, company_name=company_name, terms=terms)
             ctx["news_context"] = nc["text"]
             ctx["news_sentiment"] = nc["sentiment_text"]
+            news_score = nc["sentiment"].get("score")
+
+            # Sentiment social (StockTwits) — fusionné avec le sentiment news
+            blended = news_score
+            try:
+                import social
+                st = social.stocktwits_sentiment(ticker)
+                st_txt = social.sentiment_text(st)
+                if st_txt:
+                    ctx["news_sentiment"] += "\n" + st_txt
+                    ctx["news_context"] += f"\n💬 {st_txt}"
+                if st.get("score") is not None:
+                    blended = (st["score"] if news_score is None
+                               else (news_score + st["score"]) / 2)
+            except Exception as e:  # noqa: BLE001
+                logger.debug("StockTwits indisponible : %s", e)
+
             # valeur numérique pour la conviction (non injectée dans les prompts)
-            ctx["news_sentiment_score"] = nc["sentiment"].get("score")
+            ctx["news_sentiment_score"] = blended
         except Exception as e:  # noqa: BLE001
             logger.warning("Actualités indisponibles pour le contexte : %s", e)
 
