@@ -96,7 +96,7 @@ def build_signals(years=2):
         if df is None or df.empty or len(df) < 80:
             continue
         d2, sigs = collect_signals(df, regime, spx_by_date)
-        for (i, e, a) in sigs:
+        for (i, e, a, _sc) in sigs:
             signals.append((d2, i, e, a, d2.index[i]))
     if not signals:
         return [], [], None

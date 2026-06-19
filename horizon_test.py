@@ -64,7 +64,8 @@ def collect_signals(df, regime, spx_by_date):
         best = scan["best"]
         if not best or best.get("setup_score", 0) < MIN_SETUP:
             continue
-        sigs.append((i, price, atrp[i] if not pd.isna(atrp[i]) else None))
+        sigs.append((i, price, atrp[i] if not pd.isna(atrp[i]) else None,
+                     float(best.get("setup_score", 0))))
         next_allowed = i + 10   # cooldown fixe -> mêmes signaux pour tous les horizons
     return df, sigs
 
@@ -125,14 +126,14 @@ def main(years=2):
     print("MODE A — stop/objectif ATR (plus de temps pour se déclencher)")
     print("="*78)
     for h in HORIZONS:
-        res = [eval_atr(df, i, e, a, h) for df, sigs in all_sigs for (i, e, a) in sigs]
+        res = [eval_atr(df, i, e, a, h) for df, sigs in all_sigs for (i, e, a, _sc) in sigs]
         summarize(res, LABELS[h])
 
     print("\n" + "="*78)
     print("MODE B — conservation pure (vendu pile à l'échéance, sans stop)")
     print("="*78)
     for h in HORIZONS:
-        res = [eval_hold(df, i, e, h) for df, sigs in all_sigs for (i, e, a) in sigs]
+        res = [eval_hold(df, i, e, h) for df, sigs in all_sigs for (i, e, a, _sc) in sigs]
         summarize(res, LABELS[h])
 
 

@@ -641,10 +641,11 @@ def main(argv: list[str]):
         import thresholds
         thresholds.detail(send="--send" in argv)
     elif cmd == "backtest-report":
-        # python main.py backtest-report [annees] [--send]
+        # python main.py backtest-report [annees] [neutral|watchlist] [--send]
         import backtest_report
         yrs = next((int(a) for a in argv[1:] if a.isdigit()), 3)
-        backtest_report.run_report(yrs, send="--send" in argv)
+        univ = "watchlist" if "watchlist" in argv else "neutral"
+        backtest_report.run_report(yrs, universe=univ, send="--send" in argv)
     elif cmd == "budget":
         # python main.py budget  — simule "si j'avais investi 1500€ en suivant le bot"
         import budget_sim
