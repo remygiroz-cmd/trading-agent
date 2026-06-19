@@ -61,25 +61,36 @@ def _simulate_one(df, date_iso: str):
     return None              # pas encore assez de recul -> en cours
 
 
+def _excluded() -> set:
+    """Tickers bannis (non dispo Trade Republic) — ignorés dans les simulations."""
+    try:
+        import config
+        return {t.upper() for t in config.TRADE_REPUBLIC.get("exclude", [])}
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def simulate(levels=LEVELS) -> dict:
     """Simule les seuils sur l'historique d'activité. Retourne le rapport."""
     from memory import state
     log = state.get_state("activity", default={}) or {}
+    excl = _excluded()
 
     # finalistes uniques par (date, ticker), on garde le meilleur score
     trades: dict[tuple, dict] = {}
+    n_days = len(log)
     for d, runs in log.items():
         for r in runs:
             for det in (r.get("details") or []):
                 tk, sc = det.get("ticker"), det.get("final_score")
-                if not tk or sc is None:
+                if not tk or sc is None or str(tk).upper() in excl:
                     continue
                 key = (d, tk)
                 if key not in trades or sc > trades[key]["score"]:
                     trades[key] = {"score": float(sc)}
 
     if not trades:
-        return {"days": len(log), "total": 0, "closed": 0, "report": []}
+        return {"days": n_days, "total": 0, "closed": 0, "report": []}
 
     tickers = list({tk for (_, tk) in trades})
     bars = data_fetcher.fetch_batch(tickers, period="3mo", interval="1d")
@@ -144,12 +155,13 @@ def collect_finalists() -> list[tuple]:
     """Finalistes uniques (date, ticker, meilleur score), triés par date."""
     from memory import state
     log = state.get_state("activity", default={}) or {}
+    excl = _excluded()
     best: dict[tuple, float] = {}
     for d, runs in log.items():
         for r in runs:
             for det in (r.get("details") or []):
                 tk, sc = det.get("ticker"), det.get("final_score")
-                if not tk or sc is None:
+                if not tk or sc is None or str(tk).upper() in excl:
                     continue
                 best[(d, tk)] = max(best.get((d, tk), -1), float(sc))
     return sorted(((d, tk, sc) for (d, tk), sc in best.items()), key=lambda x: x[0])

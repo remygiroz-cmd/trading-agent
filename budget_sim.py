@@ -58,13 +58,15 @@ def _trade_outcome(df, date_iso: str):
 def _collect_trades() -> list[tuple]:
     """Liste (date, ticker, score) des finalistes uniques, triée par date."""
     from memory import state
+    import config
     log = state.get_state("activity", default={}) or {}
+    excl = {t.upper() for t in config.TRADE_REPUBLIC.get("exclude", [])}
     best: dict[tuple, float] = {}
     for d, runs in log.items():
         for r in runs:
             for det in (r.get("details") or []):
                 tk, sc = det.get("ticker"), det.get("final_score")
-                if not tk or sc is None:
+                if not tk or sc is None or str(tk).upper() in excl:
                     continue
                 key = (d, tk)
                 best[key] = max(best.get(key, -1), float(sc))

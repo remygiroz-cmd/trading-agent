@@ -379,7 +379,8 @@ BUDGET_SIM = {
 TRADE_REPUBLIC = {
     # Tickers connus comme NON disponibles sur Trade Republic (à compléter au fil
     # de l'eau). Exclus à la fois du radar buzz et de la watchlist surveillée.
-    "exclude": ["NUVL", "VTYX", "TNGX", "AKTS", "HQ", "GTBIF", "WBI"],
+    "exclude": ["NUVL", "VTYX", "TNGX", "AKTS", "HQ", "GTBIF", "WBI",
+                "HOOD", "TLN", "ELVN", "SENEA"],
 }
 
 
