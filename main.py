@@ -650,6 +650,10 @@ def main(argv: list[str]):
         # python main.py budget  — simule "si j'avais investi 1500€ en suivant le bot"
         import budget_sim
         budget_sim.run(send="--send" in argv)
+    elif cmd == "budget-detail":
+        # python main.py budget-detail  — journal trade par trade + cumul (seuils 65/60)
+        import budget_sim
+        budget_sim.detail(send="--send" in argv)
     elif cmd == "screen":
         # python main.py screen TICKER1 TICKER2 ...  (analyse sans IA + envoi Telegram)
         run_screen(argv[1:])

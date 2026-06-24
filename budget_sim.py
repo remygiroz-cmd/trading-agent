@@ -177,6 +177,115 @@ def run(send: bool = True) -> str:
     return msg
 
 
+# ─────────────────────────────────────────────────────────────
+# RAPPORT DÉTAILLÉ (journal trade par trade + cumul) par seuil
+# ─────────────────────────────────────────────────────────────
+
+def _ledger(trades, detail_map, level, budget, per_trade_pct) -> list[dict]:
+    """Journal des trades clôturés pris par le porte-monnaie (contrainte de cash)."""
+    per_trade = budget * per_trade_pct
+    cash = budget
+    open_pos = []
+    executed = []
+
+    def _free(upto: str):
+        nonlocal cash, open_pos
+        keep = []
+        for p in open_pos:
+            if p["exit_date"] <= upto:
+                cash += p["proceeds"]
+            else:
+                keep.append(p)
+        open_pos = keep
+
+    for (d, tk, sc) in trades:           # trades déjà triés par date d'étude
+        if sc < level:
+            continue
+        _free(d)
+        det = detail_map.get((d, tk))
+        if det is None:                  # pas encore clôturé -> on n'inscrit pas
+            continue
+        invest = min(per_trade, cash)
+        if invest < budget * 0.05:
+            continue
+        cash -= invest
+        proceeds = invest * (1 + det["pct"])
+        open_pos.append({"exit_date": det["exit_date"], "proceeds": proceeds})
+        executed.append({
+            "tk": tk, "score": sc, "entry_date": det["entry_date"], "entry": det["entry"],
+            "exit_date": det["exit_date"], "exit": det["exit"], "reason": det["reason"],
+            "pct": det["pct"], "invest": invest, "pnl": proceeds - invest,
+        })
+
+    executed.sort(key=lambda x: x["exit_date"])   # ordre de clôture pour le cumul
+    return executed
+
+
+def _format_ledger(executed: list[dict], level: int, budget: float, n_open: int) -> str:
+    if not executed:
+        return (f"🧾 SEUIL {level} — budget {budget:.0f} €\n"
+                f"Aucun trade clôturé pour l'instant ({n_open} en cours).")
+    lines = [f"🧾 SEUIL {level} — budget {budget:.0f} €", ""]
+    balance = budget
+    wins = 0
+    for t in executed:
+        balance += t["pnl"]
+        if t["pnl"] > 0:
+            wins += 1
+        emoji = "✅" if t["pct"] > 0 else "❌" if t["pct"] < 0 else "➖"
+        lines.append(
+            f"{emoji} {t['tk']} (score {t['score']:.0f})\n"
+            f"   {t['entry_date']} {t['entry']:.2f} → {t['exit_date']} {t['exit']:.2f} "
+            f"({t['reason']}) {t['pct']*100:+.1f}%\n"
+            f"   mise {t['invest']:.0f} € → {t['pnl']:+.0f} € · solde {balance:,.0f} €")
+    total_pnl = balance - budget
+    lines.append(f"\n➡️ TOTAL seuil {level} : {len(executed)} trades, {wins} gagnants, "
+                 f"{total_pnl:+,.0f} € → {balance:,.0f} €")
+    if n_open:
+        lines.append(f"   (+ {n_open} position(s) encore en cours, non comptées)")
+    return "\n".join(lines)
+
+
+def detail(levels=(65, 60), send: bool = True) -> str:
+    """Journal complet trade par trade + cumul, pour chaque seuil."""
+    import thresholds
+    cfg = config_budget()
+    budget, ptp = cfg["budget"], cfg["per_trade_pct"]
+
+    trades = _collect_trades()
+    if not trades:
+        msg = f"🧾 Rapport budget {budget:.0f} € : pas encore de données."
+        print(msg)
+        if send:
+            from alerts import telegram_bot
+            telegram_bot.send_message(msg)
+        return msg
+
+    tickers = list({tk for (_, tk, _) in trades})
+    bars = data_fetcher.fetch_batch(tickers, period="3mo", interval="1d")
+    detail_map = {(d, tk): thresholds._trade_detail(bars.get(tk), d) for (d, tk, _) in trades}
+
+    blocks = []
+    for lvl in levels:
+        executed = _ledger(trades, detail_map, lvl, budget, ptp)
+        n_open = sum(1 for (d, tk, sc) in trades
+                     if sc >= lvl and detail_map.get((d, tk)) is None)
+        blocks.append(_format_ledger(executed, lvl, budget, n_open))
+
+    msg = (f"📒 RAPPORT DÉTAILLÉ — budget {budget:.0f} € "
+           f"(position {ptp*100:.0f}%/trade, valeurs Trade Republic only)\n\n"
+           + "\n\n".join(blocks)
+           + "\n\n(Sorties objectif/stop/horizon comme en réel. Indicatif, hors frais.)")
+    print(msg)
+    if send:
+        try:
+            from alerts import telegram_bot
+            telegram_bot.send_message(msg)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Envoi rapport budget échoué : %s", e)
+    return msg
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     run(send=False)
