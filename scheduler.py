@@ -211,6 +211,16 @@ def run_due(tolerance_min: int = 8) -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("poll_and_respond échoué : %s", e)
 
+    # File du suivi de portefeuille (suivre / unfollow / tweet / liste déposés par
+    # le webhook Telegram) — traitée à CHAQUE passage, TOUS LES JOURS (y compris le
+    # week-end), sinon les commandes restent bloquées les jours non ouvrés.
+    if getattr(config, "MODE", "scan") == "monitor":
+        try:
+            import monitor
+            monitor.process_commands()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Traitement file monitor échoué : %s", e)
+
     n = now_paris()
 
     # Radar buzz : récap de fin d'essai (peut tomber un week-end) — toujours vérifié
@@ -274,9 +284,8 @@ def run_due(tolerance_min: int = 8) -> dict:
     if getattr(config, "MODE", "scan") == "monitor":
         try:
             import monitor
-            # Traiter d'abord les commandes en attente (suivre / analyser un tweet)
-            # déposées par Telegram — à CHAQUE passage, pour une réactivité ~minute.
-            monitor.process_commands()
+            # (Les commandes en attente sont déjà traitées en tête de run_due,
+            # tous les jours — voir plus haut.)
             times = config.MONITOR["check_times"]
             for i, t in enumerate(times):
                 task = "monitor_" + t
