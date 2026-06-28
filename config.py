@@ -479,6 +479,12 @@ CASH = {
     "PEA": 1745.45,
 }
 
+# Date du relevé ci-dessus (captures du portefeuille). Les transactions ANTÉRIEURES
+# à cette date sont déjà incluses dans HOLDINGS : on les journalise sans toucher
+# aux parts (sinon double comptage). Les transactions postérieures, elles, mettent
+# bien à jour le portefeuille.
+HOLDINGS_SNAPSHOT_DATE = "2026-06-28"
+
 
 # ─────────────────────────────────────────────────────────────
 # DONNÉES MARCHÉ (sources)

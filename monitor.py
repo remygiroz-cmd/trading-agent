@@ -455,6 +455,15 @@ def process_commands(send: bool = True) -> dict:
             elif action == "tweet_image":
                 import tweet
                 tweet.analyze_image(arg, send=True)
+            elif action == "screenshot":
+                import transactions
+                transactions.handle_screenshot(arg, send=True)
+            elif action == "journal":
+                import transactions
+                replies.append(transactions.format_journal())
+            elif action == "undo_tx":
+                import transactions
+                replies.append(transactions.undo_last())
         except Exception as e:  # noqa: BLE001
             logger.warning("Commande %s KO : %s", action, e)
             replies.append(f"⚠️ Échec de la commande ({action}).")

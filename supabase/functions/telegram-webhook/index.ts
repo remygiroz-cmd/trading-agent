@@ -121,12 +121,15 @@ async function diagMessage(): Promise<string> {
 
 const HELP = `👋 Agent de suivi de portefeuille.
 /portefeuille — valeur en temps réel de ton CTO + PEA (PV + variation du jour)
+📷 Envoie une CAPTURE de transaction Trade Republic -> je l'ajoute au portefeuille
+/transactions — journal de tes achats/ventes enregistrés
+/annuler — retirer la dernière transaction enregistrée
 /monitor — bulletin de suivi (achat/vente sur tes valeurs)
 /liste — voir toutes les actions actuellement suivies
 /suivre <ticker|nom> — suivre une nouvelle action (ex. /suivre $NVDA)
 /unfollow <ticker|nom> — ne plus suivre
 /tweet <texte> — analyser un tweet par les 3 IA
-📷 Envoie une CAPTURE de tweet -> les 3 IA l'analysent
+📷 Une capture de tweet -> les 3 IA l'analysent
 /paper /diag /status /pause /actif`;
 
 const MODE_REPLY: Record<string, string> = {
@@ -161,6 +164,14 @@ async function handleCommand(text: string): Promise<string> {
   if (cmd === "/portefeuille" || cmd === "/pf" || cmd === "/portfolio" || cmd === "/pea" || cmd === "/cto") {
     await queueCommand("portfolio", ""); await wakeAgent();
     return "💼 Je calcule ton portefeuille en temps réel (CTO + PEA)… réponse dans ~1 min.";
+  }
+  if (cmd === "/transactions" || cmd === "/journal" || cmd === "/tx") {
+    await queueCommand("journal", ""); await wakeAgent();
+    return "📒 Je te sors le journal des transactions… (~1 min).";
+  }
+  if (cmd === "/annuler" || cmd === "/undo") {
+    await queueCommand("undo_tx", ""); await wakeAgent();
+    return "↩️ J'annule la dernière transaction enregistrée… (~1 min).";
   }
   if (cmd === "/tweet") {
     const arg = argOf(text);
@@ -216,9 +227,9 @@ Deno.serve(async (req) => {
       const fileId = photos[photos.length - 1].file_id;   // plus grande taille
       const url = await tgFileUrl(fileId);
       if (url) {
-        await queueCommand("tweet_image", url);
+        await queueCommand("screenshot", url);
         await wakeAgent();
-        await tg("sendMessage", { chat_id: chatId, text: "📷 Capture reçue — les 3 IA l'analysent, réponse dans ~1 min." });
+        await tg("sendMessage", { chat_id: chatId, text: "📷 Capture reçue — je la lis (transaction ou tweet), réponse dans ~1 min." });
       } else {
         await tg("sendMessage", { chat_id: chatId, text: "Je n'ai pas pu récupérer l'image, réessaie." });
       }

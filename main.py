@@ -707,6 +707,17 @@ def main(argv: list[str]):
         # python main.py portefeuille [--send]  — valeur temps réel CTO + PEA
         import holdings
         holdings.run(send="--send" in argv)
+    elif cmd in ("transaction", "tx"):
+        # python main.py transaction <url_capture> [--send]  — lit une capture TR
+        import transactions
+        url = next((a for a in argv[1:] if a != "--send"), "")
+        print(transactions.handle_screenshot(url, send="--send" in argv))
+    elif cmd in ("transactions", "journal"):
+        import transactions
+        print(transactions.format_journal())
+    elif cmd in ("annuler", "undo"):
+        import transactions
+        print(transactions.undo_last())
     elif cmd == "process-queue":
         import monitor
         print(monitor.process_commands(send="--send" in argv))
