@@ -39,11 +39,49 @@ POLYGON_API_KEY = os.getenv("POLYGON_API_KEY", "")
 # FUSEAU HORAIRE ET PLANIFICATION
 # ─────────────────────────────────────────────────────────────
 
-# Interrupteur général. False = l'agent ne fait PLUS RIEN (aucun scan, aucun
-# appel IA, aucun buzz, aucun bilan) -> zéro coût API. Réversible : repasser à True.
-AGENT_ENABLED = False
+# Interrupteur général. False = l'agent ne fait PLUS RIEN.
+AGENT_ENABLED = True
+
+# Mode de fonctionnement :
+#   "monitor" = suivi du portefeuille de Rémy (signaux achat/vente sur SA liste)
+#   "scan"    = ancien mode (screener momentum sur tout le marché) — désactivé
+MODE = "monitor"
 
 TIMEZONE = "Europe/Paris"
+
+
+# ─────────────────────────────────────────────────────────────
+# MODE SUIVI DE PORTEFEUILLE (cf. monitor.py)
+# Le bot surveille les valeurs de Rémy et indique quand acheter/vendre.
+#   type "conviction" : long terme -> signaux pour RENFORCER sur repli
+#   type "spec"       : spéculatif -> signaux d'ENTRÉE et de SORTIE actifs
+# ─────────────────────────────────────────────────────────────
+MONITOR = {
+    "enabled": True,
+    "check_times": ["09:00", "13:00", "17:35"],  # bulletin à 09:00, re-checks ensuite
+    "rsi_oversold": 35,
+    "rsi_overbought": 72,
+    "conviction_trim_rsi": 78,        # alléger une conviction seulement si TRÈS suracheté
+    "conviction_trim_above_ma": 0.15,  # ET > 15% au-dessus de la MA50
+    "near_ma_pct": 0.03,              # "sur la MA50" = à moins de 3%
+    "spec_take_profit": 0.15,         # spéculatif : +15% depuis l'achat -> prendre les bénéfices
+}
+
+WATCHLIST_MONITOR = [
+    # Convictions (long terme — renforcer sur repli)
+    {"name": "Hermès",      "ticker": "RMS.PA",   "type": "conviction", "entry": 1690.0,  "cur": "€"},
+    {"name": "LVMH",        "ticker": "MC.PA",    "type": "conviction", "entry": 476.95,  "cur": "€"},
+    {"name": "Air Liquide", "ticker": "AI.PA",    "type": "conviction", "entry": 173.08,  "cur": "€"},
+    {"name": "Microsoft",   "ticker": "MSFT",     "type": "conviction", "entry": 394.24,  "cur": "$"},
+    {"name": "Tesla",       "ticker": "TSLA",     "type": "conviction", "entry": 441.28,  "cur": "$"},
+    {"name": "IonQ",        "ticker": "IONQ",     "type": "conviction", "entry": 39.97,   "cur": "$"},
+    # Spéculatives (entrer / sortir)
+    {"name": "Sanofi",            "ticker": "SAN.PA",   "type": "spec", "entry": 80.04,  "cur": "€"},
+    {"name": "Sartorius Stedim",  "ticker": "DIM.PA",   "type": "spec", "entry": 184.70, "cur": "€"},
+    {"name": "Riber",             "ticker": "ALRIB.PA", "type": "spec", "entry": 13.22,  "cur": "€"},
+    {"name": "2CRSI",             "ticker": "AL2SI.PA", "type": "spec", "entry": 49.22,  "cur": "€"},
+    {"name": "Soitec",            "ticker": "SOI.PA",   "type": "spec", "entry": 157.30, "cur": "€"},
+]
 
 SCAN_SCHEDULE = [
     {"time": "09:35", "label": "ouverture", "markets": ["EU", "US"]},

@@ -270,6 +270,26 @@ def run_due(tolerance_min: int = 8) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
+    # ── MODE SUIVI DE PORTEFEUILLE ──
+    if getattr(config, "MODE", "scan") == "monitor":
+        try:
+            import monitor
+            times = config.MONITOR["check_times"]
+            for i, t in enumerate(times):
+                task = "monitor_" + t
+                if due(t, 150) and not already_done(task):
+                    mark_done(task)
+                    if i == 0:                       # 1er créneau du jour = bulletin complet
+                        monitor.run_bulletin(send=True)
+                    else:                            # créneaux suivants = alertes ponctuelles
+                        monitor.check_and_alert(send=True)
+                    return {"ran": "monitor", "slot": t}
+            logger.info("Monitor : aucun créneau dû à %s.", n.strftime("%H:%M"))
+            return {"ran": None}
+        except Exception as e:  # noqa: BLE001
+            logger.error("Mode monitor échoué : %s", e)
+            return {"error": str(e)[:120]}
+
     # Radar buzz : récaps avant ouverture EU / US (fenêtre de rattrapage 2h)
     try:
         if config.BUZZ["enabled"]:

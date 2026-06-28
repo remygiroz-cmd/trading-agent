@@ -677,6 +677,10 @@ def main(argv: list[str]):
     elif cmd == "delete-webhook":
         from alerts import telegram_bot
         print("Webhook désactivé." if telegram_bot.delete_webhook() else "Échec.")
+    elif cmd == "monitor":
+        # python main.py monitor [--send]  — bulletin de suivi du portefeuille
+        import monitor
+        monitor.run_bulletin(send="--send" in argv)
     elif cmd == "selftest":
         run_selftest()
     else:
