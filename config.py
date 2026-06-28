@@ -444,6 +444,43 @@ PORTFOLIO = {
 
 
 # ─────────────────────────────────────────────────────────────
+# PORTEFEUILLE RÉEL DE RÉMY (cf. holdings.py) — suivi en TEMPS RÉEL
+# Deux comptes : CTO (Trade Republic) et PEA. Pour chaque ligne on note ce que
+# montre l'appli au moment du relevé : la VALEUR actuelle de la position (en €)
+# et la plus/moins-value DEPUIS L'ACHAT (en % côté CTO, en € côté PEA).
+# holdings.py en déduit le prix de revient et la quantité, puis recalcule la
+# valeur live à partir du cours du jour (Yahoo).
+#
+# Pour mettre à jour : remplace value_eur + pl_pct/pl_eur par ce qu'affiche
+# l'appli (et buy_price si tu renforces à un autre cours).
+# ─────────────────────────────────────────────────────────────
+HOLDINGS = [
+    # ── CTO (Trade Republic) — P/L affichée en % ──
+    {"account": "CTO", "name": "Tesla",                  "ticker": "TSLA",  "cur": "$", "value_eur": 3496.70, "pl_pct": -0.1258, "buy_price": 441.28},
+    {"account": "CTO", "name": "Microsoft",              "ticker": "MSFT",  "cur": "$", "value_eur":  959.94, "pl_pct": -0.0402, "buy_price": 394.24},
+    {"account": "CTO", "name": "Gold 3x Lev USD (Acc)",  "ticker": "3GOL.L", "cur": "$", "value_eur": 518.48, "pl_pct": -0.6549, "buy_price": None},
+    {"account": "CTO", "name": "IonQ",                   "ticker": "IONQ",  "cur": "$", "value_eur":   95.32, "pl_pct": -0.0470, "buy_price": 39.97},
+    {"account": "CTO", "name": "Physical Gold USD (Acc)", "ticker": "SGLD.L", "cur": "$", "value_eur":  70.31, "pl_pct": -0.0914, "buy_price": None},
+
+    # ── PEA — P/L affichée en € ──
+    {"account": "PEA", "name": "Hermès",             "ticker": "RMS.PA",   "cur": "€", "value_eur": 3276.00, "pl_eur":  -99.00, "buy_price": 1690.00},
+    {"account": "PEA", "name": "Sartorius Stedim",   "ticker": "DIM.PA",   "cur": "€", "value_eur": 1046.40, "pl_eur":  -62.80, "buy_price":  184.70},
+    {"account": "PEA", "name": "LVMH",               "ticker": "MC.PA",    "cur": "€", "value_eur":  988.80, "pl_eur":  +34.90, "buy_price":  476.95},
+    {"account": "PEA", "name": "Sanofi",             "ticker": "SAN.PA",   "cur": "€", "value_eur":  977.86, "pl_eur":  -62.62, "buy_price":   80.04},
+    {"account": "PEA", "name": "Riber",              "ticker": "ALRIB.PA", "cur": "€", "value_eur":  946.00, "pl_eur": -190.20, "buy_price":   13.22},
+    {"account": "PEA", "name": "Air Liquide",        "ticker": "AI.PA",    "cur": "€", "value_eur":  568.52, "pl_eur":  -12.72, "buy_price":  173.08},
+    {"account": "PEA", "name": "2CRSI",              "ticker": "AL2SI.PA", "cur": "€", "value_eur":  563.64, "pl_eur": -476.02, "buy_price":   49.22},
+    {"account": "PEA", "name": "Soitec",             "ticker": "SOI.PA",   "cur": "€", "value_eur":  227.30, "pl_eur":  -88.30, "buy_price":  157.30},
+]
+
+# Liquidités par compte (espèces non investies).
+CASH = {
+    "CTO": 0.0,
+    "PEA": 1745.45,
+}
+
+
+# ─────────────────────────────────────────────────────────────
 # DONNÉES MARCHÉ (sources)
 # ─────────────────────────────────────────────────────────────
 

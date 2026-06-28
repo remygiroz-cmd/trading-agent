@@ -120,6 +120,7 @@ async function diagMessage(): Promise<string> {
 }
 
 const HELP = `👋 Agent de suivi de portefeuille.
+/portefeuille — valeur en temps réel de ton CTO + PEA (PV + variation du jour)
 /monitor — bulletin de suivi (achat/vente sur tes valeurs)
 /liste — voir toutes les actions actuellement suivies
 /suivre <ticker|nom> — suivre une nouvelle action (ex. /suivre $NVDA)
@@ -156,6 +157,10 @@ async function handleCommand(text: string): Promise<string> {
   if (cmd === "/liste" || cmd === "/suivis" || cmd === "/watchlist") {
     await queueCommand("list", ""); await wakeAgent();
     return "📋 Je te prépare la liste des actions suivies… (~1 min).";
+  }
+  if (cmd === "/portefeuille" || cmd === "/pf" || cmd === "/portfolio" || cmd === "/pea" || cmd === "/cto") {
+    await queueCommand("portfolio", ""); await wakeAgent();
+    return "💼 Je calcule ton portefeuille en temps réel (CTO + PEA)… réponse dans ~1 min.";
   }
   if (cmd === "/tweet") {
     const arg = argOf(text);

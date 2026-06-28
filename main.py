@@ -703,6 +703,10 @@ def main(argv: list[str]):
     elif cmd in ("liste", "watchlist"):
         import monitor
         print(monitor.format_watchlist())
+    elif cmd in ("portefeuille", "portfolio", "pf"):
+        # python main.py portefeuille [--send]  — valeur temps réel CTO + PEA
+        import holdings
+        holdings.run(send="--send" in argv)
     elif cmd == "process-queue":
         import monitor
         print(monitor.process_commands(send="--send" in argv))

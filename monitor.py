@@ -446,6 +446,9 @@ def process_commands(send: bool = True) -> dict:
                 replies.append(unfollow(arg)["msg"])
             elif action == "list":
                 replies.append(format_watchlist())
+            elif action == "portfolio":
+                import holdings
+                replies.append(holdings.format_portfolio())
             elif action == "tweet":
                 import tweet
                 tweet.analyze_tweet(arg, send=True)

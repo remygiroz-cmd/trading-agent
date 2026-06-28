@@ -71,6 +71,7 @@ def send_message(text: str, chat_id: str | None = None,
 
 
 BOT_COMMANDS = [
+    ("portefeuille", "💼 Valeur temps réel de ton CTO + PEA"),
     ("suivre", "➕ Suivre — clique puis tape le ticker ou le nom"),
     ("unfollow", "➖ Ne plus suivre — clique puis tape le ticker/nom"),
     ("tweet", "🐦 Analyser un tweet — clique puis colle le texte"),
