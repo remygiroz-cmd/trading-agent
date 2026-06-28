@@ -209,8 +209,9 @@ def format_bulletin(results: list[dict]) -> str:
 
 
 def run_bulletin(send: bool = True) -> str:
-    """Bulletin complet + mise à jour de l'état (déclenche aussi les alertes ponctuelles)."""
-    res = check_and_alert(send=send)["results"]
+    """Bulletin complet du matin. Met à jour l'état SANS doublonner d'alertes
+    ponctuelles (le bulletin récapitule déjà tout)."""
+    res = check_and_alert(send=False)["results"]
     msg = format_bulletin(res)
     print(msg)
     if send:
