@@ -65,6 +65,8 @@ MONITOR = {
     "conviction_trim_above_ma": 0.15,  # ET > 15% au-dessus de la MA50
     "near_ma_pct": 0.03,              # "sur la MA50" = à moins de 3%
     "spec_take_profit": 0.15,         # spéculatif : +15% depuis l'achat -> prendre les bénéfices
+    "ai_confirm": True,               # les 3 IA confirment/nuancent chaque signal actionnable
+    "ai_max_per_run": 6,              # plafond de débats IA par exécution (coût maîtrisé)
 }
 
 WATCHLIST_MONITOR = [

@@ -681,6 +681,11 @@ def main(argv: list[str]):
         # python main.py monitor [--send]  — bulletin de suivi du portefeuille
         import monitor
         monitor.run_bulletin(send="--send" in argv)
+    elif cmd == "tweet":
+        # python main.py tweet <texte du tweet>  — analyse par les 3 IA
+        import tweet
+        text = " ".join(a for a in argv[1:] if a != "--send")
+        tweet.analyze_tweet(text, send="--send" in argv)
     elif cmd == "selftest":
         run_selftest()
     else:

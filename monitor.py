@@ -118,6 +118,7 @@ def analyze(stock: dict) -> dict:
             "ok": True, "price": price, "rsi": rsi, "ma50": ma50, "ma200": ma200,
             "pnl": ((price - entry) / entry) if entry else None,
             "signal": code, "reason": reason,
+            "snapshot": data_fetcher.latest_snapshot(df),
         })
     except Exception as e:  # noqa: BLE001
         out["reason"] = f"erreur : {str(e)[:60]}"
@@ -126,6 +127,65 @@ def analyze(stock: dict) -> dict:
 
 def analyze_all() -> list[dict]:
     return [analyze(s) for s in config.WATCHLIST_MONITOR]
+
+
+# ─────────────────────────────────────────────────────────────
+# AVIS DES 3 IA (DeepSeek / Grok / Claude) sur un signal
+# Réutilise le débat existant : les IA évaluent l'intérêt d'être ACHETEUR
+# maintenant (en croisant graphique, news, fondamentaux, sentiment). On
+# interprète leur avis par rapport au signal technique (achat ou vente).
+# ─────────────────────────────────────────────────────────────
+
+def _interpret(signal_code: str, final_score: float, buy_votes: int) -> str:
+    """Texte court : les IA confirment-elles le signal technique ?"""
+    bullish = final_score >= 65
+    bearish = final_score < 45
+    is_buy = signal_code.startswith("BUY")
+    if is_buy:
+        if bullish:
+            verdict = "✅ confirment l'achat"
+        elif bearish:
+            verdict = "⚠️ prudentes — le creux est peut-être piégé"
+        else:
+            verdict = "🤔 avis partagé"
+    else:  # signal de vente
+        if bearish:
+            verdict = "✅ confirment (peu d'intérêt à l'achat)"
+        elif bullish:
+            verdict = "⚠️ y voient une occasion d'achat malgré le signal — réévalue"
+        else:
+            verdict = "🤔 avis partagé"
+    return f"{verdict} ({final_score:.0f}/100, {buy_votes}/3 ACHETER)"
+
+
+def ai_opinion(stock: dict, analysis: dict, market: dict) -> str | None:
+    """Lance le débat des 3 IA sur la valeur et retourne un avis court (ou None)."""
+    try:
+        from agents import debate, context_builder
+        snap = analysis.get("snapshot") or {}
+        pattern = {"pattern": SIGNALS.get(analysis.get("signal", "HOLD"))[1],
+                   "setup_score": 0}
+        ctx = context_builder.build_context(stock["ticker"], snap, pattern, market,
+                                            company_name=stock.get("name", ""))
+        out = debate.run_debate(ctx)
+        res = out["result"]
+        votes = out["final_votes"]
+        per = " · ".join(
+            f"{a.capitalize()} {v.get('verdict', '?')[:4].lower()} {v.get('score', '?')}/10"
+            for a, v in votes.items())
+        head = _interpret(analysis["signal"], res["final_score"], res["buy_votes"])
+        return f"🤖 IA : {head}\n   {per}"
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ai_opinion %s KO : %s", stock.get("ticker"), e)
+        return None
+
+
+def _market_status() -> dict:
+    try:
+        import market_filter
+        return market_filter.get_market_status()
+    except Exception:  # noqa: BLE001
+        return {"spx_above_ma50": True, "vix": None, "bullish": True}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -142,26 +202,56 @@ def _fmt_line(r: dict) -> str:
     return f"{emoji} {r['name']}{price_txt} — {r['reason']}{pnl_txt}"
 
 
-def check_and_alert(send: bool = True) -> dict:
-    """Détecte les valeurs qui ENTRENT dans une zone actionnable et alerte."""
+def _is_actionable(code: str) -> bool:
+    return SIGNALS.get(code, SIGNALS["HOLD"])[2]
+
+
+def _refresh_state(results: list[dict]) -> dict:
+    """Met à jour l'état (dernier signal par valeur) et retourne l'état précédent."""
     from memory import state
     prev = state.get_state(STATE_KEY, default={}) or {}
+    new = {}
+    for r in results:
+        new[r["ticker"]] = r["signal"] if r.get("ok") else prev.get(r["ticker"], "HOLD")
+    state.set_state(STATE_KEY, new)
+    return prev
+
+
+def _enrich_ai(results: list[dict], market: dict, only: set | None = None) -> None:
+    """Ajoute l'avis des 3 IA (r['ai']) sur les signaux actionnables (plafonné)."""
+    if not config.MONITOR.get("ai_confirm"):
+        return
+    cap = config.MONITOR.get("ai_max_per_run", 6)
+    n = 0
+    for r in results:
+        if not r.get("ok") or not _is_actionable(r["signal"]):
+            continue
+        if only is not None and r["ticker"] not in only:
+            continue
+        if n >= cap:
+            break
+        r["ai"] = ai_opinion(r, r, market)
+        n += 1
+
+
+def check_and_alert(send: bool = True) -> dict:
+    """Détecte les valeurs qui ENTRENT dans une zone actionnable et alerte."""
     results = analyze_all()
-    new_state = {}
+    prev = _refresh_state(results)
+    changed = {r["ticker"] for r in results if r.get("ok")
+               and _is_actionable(r["signal"]) and prev.get(r["ticker"]) != r["signal"]}
+    if changed:
+        _enrich_ai(results, _market_status(), only=changed)
+
     alerts = []
     for r in results:
-        if not r.get("ok"):
-            new_state[r["ticker"]] = prev.get(r["ticker"], "HOLD")
-            continue
-        code = r["signal"]
-        new_state[r["ticker"]] = code
-        _, _, actionable = SIGNALS.get(code, SIGNALS["HOLD"])
-        # alerte seulement si la valeur ENTRE dans une zone actionnable (changement)
-        if actionable and prev.get(r["ticker"]) != code:
-            tag = "ACHAT" if code.startswith("BUY") else "VENTE/ALLÉGER"
-            alerts.append(f"⚡ SIGNAL {tag}\n{_fmt_line(r)}")
+        if r.get("ticker") in changed:
+            tag = "ACHAT" if r["signal"].startswith("BUY") else "VENTE/ALLÉGER"
+            msg = f"⚡ SIGNAL {tag}\n{_fmt_line(r)}"
+            if r.get("ai"):
+                msg += "\n" + r["ai"]
+            alerts.append(msg)
 
-    state.set_state(STATE_KEY, new_state)
     if send and alerts:
         try:
             from alerts import telegram_bot
@@ -185,14 +275,22 @@ def format_bulletin(results: list[dict]) -> str:
     holds = [r for r in results if r.get("signal") == "HOLD"]
     errs = [r for r in results if not r.get("ok")]
 
+    def block(rows):
+        out = []
+        for r in rows:
+            out.append(f"  {_fmt_line(r)}")
+            if r.get("ai"):
+                out.append("  " + r["ai"].replace("\n", "\n  "))
+        return out
+
     lines = [f"📋 SUIVI PORTEFEUILLE — {today}", ""]
     if buys:
         lines.append("🟢 À ACHETER / RENFORCER :")
-        lines += [f"  {_fmt_line(r)}" for r in buys]
+        lines += block(buys)
         lines.append("")
     if sells:
         lines.append("🔴 À VENDRE / ALLÉGER :")
-        lines += [f"  {_fmt_line(r)}" for r in sells]
+        lines += block(sells)
         lines.append("")
     if not buys and not sells:
         lines.append("Rien à faire aujourd'hui — aucune valeur en zone d'achat ou de vente.")
@@ -209,9 +307,10 @@ def format_bulletin(results: list[dict]) -> str:
 
 
 def run_bulletin(send: bool = True) -> str:
-    """Bulletin complet du matin. Met à jour l'état SANS doublonner d'alertes
-    ponctuelles (le bulletin récapitule déjà tout)."""
-    res = check_and_alert(send=False)["results"]
+    """Bulletin complet du matin (avec avis des 3 IA sur les signaux actionnables)."""
+    res = analyze_all()
+    _refresh_state(res)
+    _enrich_ai(res, _market_status())
     msg = format_bulletin(res)
     print(msg)
     if send:

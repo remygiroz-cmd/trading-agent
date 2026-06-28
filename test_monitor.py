@@ -99,6 +99,21 @@ check("section vente présente", "À VENDRE" in b and "Soitec" in b)
 check("conserver listé avec PV", "Tesla" in b and "-12%" in b)
 
 print(SEP)
+print("6. avis IA : interprétation vs signal technique")
+check("IA bullish + signal achat -> confirment", "confirment l'achat" in m._interpret("BUY", 80, 3))
+check("IA prudentes + signal achat -> creux piégé", "piégé" in m._interpret("BUY", 30, 0))
+check("IA bearish + signal vente -> confirment", "confirment" in m._interpret("SELL", 30, 0))
+check("IA bullish + signal vente -> réévalue", "occasion d'achat" in m._interpret("SELL", 85, 3))
+
+print(SEP)
+print("7. extraction de tickers d'un tweet")
+import tweet as tw
+check("extrait $NVDA $AMD (dédupliqué)",
+      tw.extract_tickers("J'aime $NVDA et $AMD, surtout $NVDA") == ["NVDA", "AMD"])
+check("aucun ticker -> liste vide", tw.extract_tickers("rien ici") == [])
+check("gère les tickers à suffixe ($AIR.PA)", "AIR.PA" in tw.extract_tickers("$AIR.PA monte"))
+
+print(SEP)
 print(f"RÉSULTAT : {ok} OK, {ko} KO")
 if ko:
     raise SystemExit(1)
