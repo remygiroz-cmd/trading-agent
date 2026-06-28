@@ -71,12 +71,13 @@ def send_message(text: str, chat_id: str | None = None,
 
 
 BOT_COMMANDS = [
-    ("stats", "Mes performances (réussite, espérance…)"),
-    ("dashboard", "Tableau de bord visuel (fichier)"),
+    ("monitor", "Bulletin de suivi du portefeuille"),
+    ("suivre", "Suivre une action (ticker ou nom)"),
+    ("unfollow", "Ne plus suivre une action"),
+    ("tweet", "Analyser un tweet (colle le texte)"),
     ("paper", "Portefeuille fictif (paper trading)"),
     ("diag", "Le bot a-t-il bien tourné aujourd'hui ?"),
-    ("status", "État du système et prochain scan"),
-    ("bilan", "Signaux du jour"),
+    ("status", "État du système"),
     ("pause", "Suspendre les alertes"),
     ("actif", "Réactiver les alertes"),
     ("help", "Liste des commandes"),
