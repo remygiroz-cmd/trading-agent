@@ -654,6 +654,10 @@ def main(argv: list[str]):
         # python main.py budget-detail  — journal trade par trade + cumul (seuils 65/60)
         import budget_sim
         budget_sim.detail(send="--send" in argv)
+    elif cmd == "bilan-complet":
+        # python main.py bilan-complet  — bilan global consolidé du paper trading
+        import bilan
+        bilan.global_report(send="--send" in argv)
     elif cmd == "screen":
         # python main.py screen TICKER1 TICKER2 ...  (analyse sans IA + envoi Telegram)
         run_screen(argv[1:])
