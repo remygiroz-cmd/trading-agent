@@ -9,7 +9,7 @@ on:
   workflow_dispatch:           # déclenché par Supabase Cron + manuel (onglet Actions)
     inputs:
       command:
-        description: "Commande à lancer (cron, selftest, test-cycle, scan)"
+        description: "Commande à lancer (cron, setup-telegram, selftest, test-cycle, scan)"
         required: false
         default: "cron"
         type: string
