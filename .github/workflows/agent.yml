@@ -37,9 +37,13 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
           GOOGLE_SHEETS_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEETS_WEBHOOK_URL }}
+          # Entrée passée via une variable d'environnement (et NON interpolée dans le
+          # script) : évite l'injection shell ET l'expansion des $ (ex. $AGP.MI).
+          CMD_INPUT: ${{ github.event.inputs.command }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            CMD="${{ github.event.inputs.command }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            CMD="$CMD_INPUT"
           else
             CMD="cron"
           fi
