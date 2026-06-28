@@ -121,6 +121,7 @@ async function diagMessage(): Promise<string> {
 
 const HELP = `👋 Agent de suivi de portefeuille.
 /monitor — bulletin de suivi (achat/vente sur tes valeurs)
+/liste — voir toutes les actions actuellement suivies
 /suivre <ticker|nom> — suivre une nouvelle action (ex. /suivre $NVDA)
 /unfollow <ticker|nom> — ne plus suivre
 /tweet <texte> — analyser un tweet par les 3 IA
@@ -151,6 +152,10 @@ async function handleCommand(text: string): Promise<string> {
     if (!arg) return "Usage : /unfollow <ticker ou nom>";
     await queueCommand("unfollow", arg); await wakeAgent();
     return `📝 OK, j'arrête de suivre « ${arg} ». Confirmation dans ~1 min.`;
+  }
+  if (cmd === "/liste" || cmd === "/suivis" || cmd === "/watchlist") {
+    await queueCommand("list", ""); await wakeAgent();
+    return "📋 Je te prépare la liste des actions suivies… (~1 min).";
   }
   if (cmd === "/tweet") {
     const arg = argOf(text);

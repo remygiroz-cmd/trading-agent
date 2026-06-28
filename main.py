@@ -700,6 +700,9 @@ def main(argv: list[str]):
     elif cmd == "unfollow":
         import monitor
         print(monitor.unfollow(" ".join(argv[1:]))["msg"])
+    elif cmd in ("liste", "watchlist"):
+        import monitor
+        print(monitor.format_watchlist())
     elif cmd == "process-queue":
         import monitor
         print(monitor.process_commands(send="--send" in argv))

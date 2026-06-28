@@ -173,6 +173,27 @@ def get_watchlist() -> list[dict]:
     return out
 
 
+def format_watchlist() -> str:
+    """Liste lisible des actions actuellement suivies (convictions + spéculatives)."""
+    wl = get_watchlist()
+    conv = [s for s in wl if s.get("type") == "conviction"]
+    spec = [s for s in wl if s.get("type") != "conviction"]
+
+    def line(s):
+        entry = s.get("entry")
+        prix = f" — acheté à {entry}{s.get('cur', '')}" if entry else ""
+        return f"  • {s.get('name', s['ticker'])} ({s['ticker']}){prix}"
+
+    out = [f"📋 Actions suivies : {len(wl)}"]
+    if conv:
+        out.append(f"\n💎 Conviction ({len(conv)}) :")
+        out += [line(s) for s in conv]
+    if spec:
+        out.append(f"\n⚡ Spéculatif ({len(spec)}) :")
+        out += [line(s) for s in spec]
+    return "\n".join(out)
+
+
 def follow(arg: str, typ: str = "spec") -> dict:
     """Ajoute une valeur au suivi (par ticker ou par nom)."""
     tk = resolve_ticker(arg)
@@ -423,6 +444,8 @@ def process_commands(send: bool = True) -> dict:
                 replies.append(follow(arg, cmd.get("type", "spec"))["msg"])
             elif action == "unfollow":
                 replies.append(unfollow(arg)["msg"])
+            elif action == "list":
+                replies.append(format_watchlist())
             elif action == "tweet":
                 import tweet
                 tweet.analyze_tweet(arg, send=True)
