@@ -686,6 +686,23 @@ def main(argv: list[str]):
         import tweet
         text = " ".join(a for a in argv[1:] if a != "--send")
         tweet.analyze_tweet(text, send="--send" in argv)
+    elif cmd == "tweet-image":
+        # python main.py tweet-image <url_image> [--send]  — analyse une capture de tweet
+        import tweet
+        url = next((a for a in argv[1:] if a != "--send"), "")
+        tweet.analyze_image(url, send="--send" in argv)
+    elif cmd == "follow":
+        # python main.py follow <ticker|nom> [spec|conviction]
+        import monitor
+        arg = next((a for a in argv[1:] if a not in ("spec", "conviction", "--send")), "")
+        typ = "conviction" if "conviction" in argv else "spec"
+        print(monitor.follow(arg, typ)["msg"])
+    elif cmd == "unfollow":
+        import monitor
+        print(monitor.unfollow(" ".join(argv[1:]))["msg"])
+    elif cmd == "process-queue":
+        import monitor
+        print(monitor.process_commands(send="--send" in argv))
     elif cmd == "selftest":
         run_selftest()
     else:

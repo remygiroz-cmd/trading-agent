@@ -18,6 +18,7 @@ Signaux basés sur des règles techniques claires (RSI, moyennes mobiles, distan
 à la MA50, P&L depuis le prix d'achat). Pas d'appel IA : fiable et gratuit.
 """
 
+import re
 import logging
 
 import config
@@ -125,8 +126,88 @@ def analyze(stock: dict) -> dict:
     return out
 
 
+# ─────────────────────────────────────────────────────────────
+# WATCHLIST DYNAMIQUE (suivre / ne plus suivre via Telegram)
+# Liste finale = valeurs de config + ajouts (agent_state) − retraits.
+# ─────────────────────────────────────────────────────────────
+
+def _cur_for(ticker: str) -> str:
+    eu = (".PA", ".MI", ".DE", ".AS", ".BR", ".MC", ".LS", ".HE", ".ST")
+    return "€" if any(ticker.upper().endswith(s) for s in eu) else "$"
+
+
+def resolve_ticker(text: str) -> str | None:
+    """Transforme un nom ou un ticker en ticker Yahoo. None si introuvable."""
+    text = (text or "").strip().lstrip("$")
+    if not text:
+        return None
+    # déjà un ticker (lettres/chiffres/point, sans espace) ?
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9.\-]{0,9}", text):
+        return text.upper()
+    try:
+        import yfinance as yf
+        res = yf.Search(text, max_results=5)
+        for q in (getattr(res, "quotes", None) or []):
+            if q.get("symbol") and q.get("quoteType") in ("EQUITY", "ETF"):
+                return q["symbol"].upper()
+    except Exception as e:  # noqa: BLE001
+        logger.debug("resolve_ticker(%s) KO : %s", text, e)
+    return None
+
+
+def get_watchlist() -> list[dict]:
+    """Watchlist effective : config + ajouts − retraits (agent_state)."""
+    try:
+        from memory import state
+        added = state.get_state("monitor_added", default=[]) or []
+        removed = {t.upper() for t in (state.get_state("monitor_removed", default=[]) or [])}
+    except Exception:  # noqa: BLE001
+        added, removed = [], set()
+    seen, out = set(), []
+    for s in list(config.WATCHLIST_MONITOR) + list(added):
+        tk = s["ticker"].upper()
+        if tk in removed or tk in seen:
+            continue
+        seen.add(tk)
+        out.append(s)
+    return out
+
+
+def follow(arg: str, typ: str = "spec") -> dict:
+    """Ajoute une valeur au suivi (par ticker ou par nom)."""
+    tk = resolve_ticker(arg)
+    if not tk:
+        return {"ok": False, "msg": f"❓ Action introuvable : « {arg} ». Donne le ticker (ex. $NVDA)."}
+    from memory import state
+    added = state.get_state("monitor_added", default=[]) or []
+    removed = [t for t in (state.get_state("monitor_removed", default=[]) or []) if t.upper() != tk]
+    state.set_state("monitor_removed", removed)
+    if any(s["ticker"].upper() == tk for s in get_watchlist()):
+        return {"ok": True, "msg": f"ℹ️ {tk} est déjà suivie."}
+    name = arg.strip().lstrip("$") if not re.fullmatch(r"[A-Za-z][A-Za-z0-9.\-]{0,9}", arg.strip().lstrip("$")) else tk
+    added.append({"name": name, "ticker": tk, "type": typ, "entry": None, "cur": _cur_for(tk)})
+    state.set_state("monitor_added", added)
+    return {"ok": True, "msg": f"✅ {name} ({tk}) ajoutée au suivi (profil {typ})."}
+
+
+def unfollow(arg: str) -> dict:
+    """Retire une valeur du suivi."""
+    tk = resolve_ticker(arg)
+    if not tk:
+        return {"ok": False, "msg": f"❓ Action introuvable : « {arg} »."}
+    from memory import state
+    added = [s for s in (state.get_state("monitor_added", default=[]) or []) if s["ticker"].upper() != tk]
+    state.set_state("monitor_added", added)
+    if any(s["ticker"].upper() == tk for s in config.WATCHLIST_MONITOR):
+        removed = state.get_state("monitor_removed", default=[]) or []
+        if tk not in {t.upper() for t in removed}:
+            removed.append(tk)
+        state.set_state("monitor_removed", removed)
+    return {"ok": True, "msg": f"🛑 {tk} retirée du suivi."}
+
+
 def analyze_all() -> list[dict]:
-    return [analyze(s) for s in config.WATCHLIST_MONITOR]
+    return [analyze(s) for s in get_watchlist()]
 
 
 # ─────────────────────────────────────────────────────────────
@@ -320,6 +401,46 @@ def run_bulletin(send: bool = True) -> str:
         except Exception as e:  # noqa: BLE001
             logger.warning("Envoi bulletin échoué : %s", e)
     return msg
+
+
+# ─────────────────────────────────────────────────────────────
+# FILE DE COMMANDES (déposées par le bot Telegram : suivre / analyser un tweet)
+# ─────────────────────────────────────────────────────────────
+
+def process_commands(send: bool = True) -> dict:
+    """Traite les demandes en attente déposées par Telegram (suivre/unfollow/tweet)."""
+    from memory import state
+    queue = state.get_state("monitor_queue", default=[]) or []
+    if not queue:
+        return {"processed": 0}
+    state.set_state("monitor_queue", [])   # vidé d'abord (évite les doublons)
+
+    replies = []
+    for cmd in queue:
+        action, arg = cmd.get("action"), cmd.get("arg", "")
+        try:
+            if action == "follow":
+                replies.append(follow(arg, cmd.get("type", "spec"))["msg"])
+            elif action == "unfollow":
+                replies.append(unfollow(arg)["msg"])
+            elif action == "tweet":
+                import tweet
+                tweet.analyze_tweet(arg, send=True)
+            elif action == "tweet_image":
+                import tweet
+                tweet.analyze_image(arg, send=True)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Commande %s KO : %s", action, e)
+            replies.append(f"⚠️ Échec de la commande ({action}).")
+
+    if send and replies:
+        try:
+            from alerts import telegram_bot
+            telegram_bot.send_message("\n".join(replies))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Envoi réponses commandes échoué : %s", e)
+    logger.info("Monitor : %s commande(s) traitée(s)", len(queue))
+    return {"processed": len(queue)}
 
 
 if __name__ == "__main__":

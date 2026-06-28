@@ -114,6 +114,28 @@ check("aucun ticker -> liste vide", tw.extract_tickers("rien ici") == [])
 check("gère les tickers à suffixe ($AIR.PA)", "AIR.PA" in tw.extract_tickers("$AIR.PA monte"))
 
 print(SEP)
+print("8. watchlist dynamique (suivre / ne plus suivre)")
+check("resolve_ticker reconnaît un ticker", m.resolve_ticker("$NVDA") == "NVDA")
+check("resolve_ticker garde le suffixe", m.resolve_ticker("AGP.MI") == "AGP.MI")
+check("devise déduite du suffixe", m._cur_for("MC.PA") == "€" and m._cur_for("PLTR") == "$")
+from memory import state as _state
+_store = {}
+_og, _os = _state.get_state, _state.set_state
+_state.get_state = lambda k, default=None: _store.get(k, default)
+_state.set_state = lambda k, v: _store.__setitem__(k, v)
+try:
+    n0 = len(m.get_watchlist())
+    m.follow("$PLTR", "spec")
+    check("follow ajoute la valeur", any(s["ticker"] == "PLTR" for s in m.get_watchlist()))
+    check("watchlist +1", len(m.get_watchlist()) == n0 + 1)
+    m.unfollow("TSLA")
+    check("unfollow retire une valeur de config", not any(s["ticker"] == "TSLA" for s in m.get_watchlist()))
+    m.follow("TSLA", "conviction")
+    check("re-follow réintègre", any(s["ticker"] == "TSLA" for s in m.get_watchlist()))
+finally:
+    _state.get_state, _state.set_state = _og, _os
+
+print(SEP)
 print(f"RÉSULTAT : {ok} OK, {ko} KO")
 if ko:
     raise SystemExit(1)

@@ -274,6 +274,9 @@ def run_due(tolerance_min: int = 8) -> dict:
     if getattr(config, "MODE", "scan") == "monitor":
         try:
             import monitor
+            # Traiter d'abord les commandes en attente (suivre / analyser un tweet)
+            # déposées par Telegram — à CHAQUE passage, pour une réactivité ~minute.
+            monitor.process_commands()
             times = config.MONITOR["check_times"]
             for i, t in enumerate(times):
                 task = "monitor_" + t

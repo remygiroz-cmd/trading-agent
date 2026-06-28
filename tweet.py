@@ -84,6 +84,46 @@ def analyze_tweet(text: str, send: bool = True, max_tickers: int = 6) -> str:
     return msg
 
 
+def analyze_image(image_url: str, send: bool = True) -> str:
+    """Lit une capture d'écran de tweet (vision Claude), en extrait les actions,
+    puis lance le débat des 3 IA dessus."""
+    import base64
+    try:
+        r = requests.get(image_url, timeout=30, headers={"User-Agent": "trading-agent"})
+        r.raise_for_status()
+        b64 = base64.b64encode(r.content).decode()
+        media = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
+        if media not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+            media = "image/jpeg"
+    except Exception as e:  # noqa: BLE001
+        msg = f"📨 Impossible de lire l'image : {str(e)[:80]}"
+        if send:
+            _send(msg)
+        return msg
+
+    from agents import base as agent_base
+    system = "Tu lis des captures d'écran de tweets boursiers. Réponds en une ligne."
+    user = ("Quelles ACTIONS (sociétés cotées) sont recommandées/citées dans ce tweet ? "
+            "Donne UNIQUEMENT leurs tickers boursiers au format $TICKER (Yahoo Finance, "
+            "avec le suffixe de place si non-US, ex. $AGP.MI, $MC.PA), séparés par des espaces. "
+            "Si tu n'es pas sûr du ticker, donne le nom entre crochets. Rien d'autre.")
+    try:
+        extracted = agent_base.call_claude_vision(system, user, b64, media)
+    except Exception as e:  # noqa: BLE001
+        msg = f"📨 Lecture de l'image échouée : {str(e)[:80]}"
+        if send:
+            _send(msg)
+        return msg
+
+    logger.info("Vision a extrait : %s", extracted[:160])
+    # Résoudre les noms entre crochets en tickers si possible
+    import monitor
+    names = re.findall(r"\[([^\]]+)\]", extracted)
+    resolved = " ".join(f"${monitor.resolve_ticker(n)}" for n in names if monitor.resolve_ticker(n))
+    full = extracted + " " + resolved
+    return analyze_tweet(full, send=send)
+
+
 def _send(msg: str) -> None:
     try:
         from alerts import telegram_bot

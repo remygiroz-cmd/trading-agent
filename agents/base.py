@@ -149,6 +149,32 @@ def call_claude(system: str, user: str) -> str:
     return "".join(parts)
 
 
+def call_claude_vision(system: str, user: str, image_b64: str,
+                       media_type: str = "image/jpeg") -> str:
+    """Appel Claude avec une image (lecture de capture d'écran)."""
+    cfg = config.AI_CONFIG["claude"]
+    if not cfg["api_key"]:
+        raise RuntimeError("Clé API claude manquante")
+    payload = {
+        "model": cfg["model"],
+        "max_tokens": config.AI_REQUEST["max_tokens"],
+        "system": system,
+        "messages": [{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
+            {"type": "text", "text": user},
+        ]}],
+    }
+    headers = {
+        "x-api-key": cfg["api_key"],
+        "anthropic-version": cfg["anthropic_version"],
+        "Content-Type": "application/json",
+    }
+    resp = _post_with_retry(cfg["url"], headers, payload)
+    data = resp.json()
+    parts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
+    return "".join(parts)
+
+
 def _post_with_retry(url: str, headers: dict, payload: dict) -> requests.Response:
     last = None
     for attempt in range(config.AI_REQUEST["max_retries"] + 1):
