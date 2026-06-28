@@ -22,9 +22,9 @@ def check(name, cond):
         print(f"  ❌ {name}")
 
 
-# Raccourci : _signal(typ, price, entry, rsi, ma20, ma50, ma200, ma50_rising)
-def sig(typ, price, entry, rsi, ma20, ma50, ma200, rising):
-    return m._signal(typ, price, entry, rsi, ma20, ma50, ma200, rising)[0]
+# Raccourci : _signal(typ, price, entry, rsi, ma20, ma50, ma200, ma50_rising, st_bull)
+def sig(typ, price, entry, rsi, ma20, ma50, ma200, rising, st_bull=False):
+    return m._signal(typ, price, entry, rsi, ma20, ma50, ma200, rising, st_bull=st_bull)[0]
 
 
 print(SEP)
@@ -76,6 +76,23 @@ check("survendu + objectif atteint -> VENTE (priorité sortie)",
       sig("spec", 116, 100, 30, 110, 108, 90, True) == "SELL")
 
 print(SEP)
+print("3bis. confirmation court terme : ne pas vendre dans un rebond")
+# spec : cassure MA50 MAIS dynamique court terme repart -> ATTENDRE (pas VENTE)
+check("spec cassure MA50 + rebond 4h -> ATTENDRE",
+      sig("spec", 95, 100, 50, 98, 100, 110, False, st_bull=True) == "WAIT")
+# spec : même cassure SANS rebond court terme -> VENTE (comportement inchangé)
+check("spec cassure MA50 sans rebond -> VENTE",
+      sig("spec", 95, 100, 50, 98, 100, 110, False, st_bull=False) == "SELL")
+# conviction : tendance cassée MAIS rebond 4h -> ATTENDRE
+check("conviction tendance cassée + rebond 4h -> ATTENDRE",
+      sig("conviction", 78, 90, 45, 82, 85, 80, False, st_bull=True) == "WAIT")
+# conviction : take-profit/surchauffe reste prioritaire même avec rebond court terme
+check("conviction RSI 80 + rebond 4h -> VENTE (surchauffe prioritaire)",
+      sig("conviction", 120, 90, 80, 110, 100, 80, True, st_bull=True) == "SELL")
+check("spec objectif atteint + rebond 4h -> VENTE (bénéfices prioritaires)",
+      sig("spec", 116, 100, 30, 110, 108, 90, True, st_bull=True) == "SELL")
+
+print(SEP)
 print("4. config watchlist cohérente")
 wl = config.WATCHLIST_MONITOR
 check("11 valeurs surveillées", len(wl) == 11)
@@ -90,12 +107,15 @@ fake = [
      "reason": "repli sur la MA50"},
     {"name": "Soitec", "cur": "€", "ok": True, "price": 180.0, "pnl": 0.16, "signal": "SELL",
      "reason": "objectif atteint"},
+    {"name": "Sanofi", "cur": "€", "ok": True, "price": 75.0, "pnl": -0.06, "signal": "WAIT",
+     "reason": "cassure MA50 mais rebond court terme"},
     {"name": "Tesla", "cur": "$", "ok": True, "price": 400.0, "pnl": -0.12, "signal": "HOLD",
      "reason": "rien"},
 ]
 b = m.format_bulletin(fake)
 check("section achat présente", "À ACHETER" in b and "LVMH" in b)
 check("section vente présente", "À VENDRE" in b and "Soitec" in b)
+check("section surveillance présente", "SOUS SURVEILLANCE" in b and "Sanofi" in b)
 check("conserver listé avec PV", "Tesla" in b and "-12%" in b)
 
 print(SEP)

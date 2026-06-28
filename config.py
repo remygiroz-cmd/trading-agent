@@ -67,7 +67,28 @@ MONITOR = {
     "spec_take_profit": 0.15,         # spéculatif : +15% depuis l'achat -> prendre les bénéfices
     "ai_confirm": True,               # les 3 IA confirment/nuancent chaque signal actionnable
     "ai_max_per_run": 6,              # plafond de débats IA par exécution (coût maîtrisé)
+    # Confirmation COURT TERME avant de vendre sur une cassure de tendance.
+    # Le signal daily dit "cassé" mais le 4h peut déjà repartir (rebond, sortie de
+    # canal baissier / bullflag, RSI qui remonte, MACD qui se retourne). Dans ce cas
+    # on n'envoie PAS "vendre" : on passe en "ATTENDRE" et on surveille la confirmation.
+    "short_term_confirm": True,
+    "short_term_interval": "4h",
+    "short_term_period": "60d",       # historique 4h récupéré pour juger la dynamique
 }
+
+# ─────────────────────────────────────────────────────────────
+# ALERTES DE FRANCHISSEMENT DE PRIX (cf. alerts/price_alerts.py)
+# Prévient AU MOMENT où une valeur franchit un niveau clé (dans un sens donné).
+# Anti-doublon : réarmé automatiquement quand le prix repasse de l'autre côté.
+#   dir "above" : alerte quand le prix passe AU-DESSUS de level
+#   dir "below" : alerte quand le prix passe EN DESSOUS de level
+# ─────────────────────────────────────────────────────────────
+PRICE_ALERTS = [
+    {"name": "Sanofi", "ticker": "SAN.PA", "level": 76.0, "dir": "above", "cur": "€",
+     "msg": "franchit 76€ — sortie du canal baissier confirmée, le signal de vente est annulé"},
+    {"name": "Hermès", "ticker": "RMS.PA", "level": 1690.0, "dir": "above", "cur": "€",
+     "msg": "franchit 1690€ — neckline du W cassée, reprise haussière confirmée"},
+]
 
 WATCHLIST_MONITOR = [
     # Convictions (long terme — renforcer sur repli)

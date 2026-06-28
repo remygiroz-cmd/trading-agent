@@ -33,6 +33,7 @@ SIGNALS = {
     "BUY":        ("🟢", "ACHAT / RENFORCER", True),
     "SELL":       ("🔴", "VENTE", True),
     "TRIM":       ("🟠", "ALLÉGER", True),
+    "WAIT":       ("🟡", "ATTENDRE — surveiller", True),  # cassure daily MAIS rebond court terme
     "HOLD":       ("⚪", "CONSERVER", False),
 }
 
@@ -43,8 +44,14 @@ SIGNALS = {
 
 def _signal(typ: str, price: float, entry: float | None, rsi: float | None,
             ma20: float | None, ma50: float | None, ma200: float | None,
-            ma50_rising: bool) -> tuple[str, str]:
-    """Retourne (code_signal, raison). Logique différente conviction vs spec."""
+            ma50_rising: bool, st_bull: bool = False) -> tuple[str, str]:
+    """Retourne (code_signal, raison). Logique différente conviction vs spec.
+
+    st_bull : la dynamique COURT TERME (4h) repart à la hausse. Quand c'est le cas,
+    une cassure de tendance en daily ne déclenche PAS une vente sèche : on renvoie
+    "WAIT" (attendre la confirmation) pour ne pas vendre dans un rebond. Les sorties
+    pour prise de bénéfices ou surchauffe (RSI) restent prioritaires, elles.
+    """
     c = config.MONITOR
     pnl = ((price - entry) / entry) if entry else None
     dist50 = ((price - ma50) / ma50) if ma50 else None
@@ -67,6 +74,8 @@ def _signal(typ: str, price: float, entry: float | None, rsi: float | None,
         # Vraie cassure de tendance (sous MA50 ET MA200) -> vendre, rachat plus bas
         if (ma50 is not None and price < ma50 and not ma50_rising
                 and ma200 is not None and price < ma200):
+            if st_bull:
+                return "WAIT", "tendance cassée en daily MAIS rebond court terme (4h) en cours — on attend la confirmation avant de vendre"
             return "SELL", "tendance cassée (sous MA50 et MA200) — vendre, je te signalerai quand racheter"
         return "HOLD", "rien à signaler — on garde"
 
@@ -77,6 +86,8 @@ def _signal(typ: str, price: float, entry: float | None, rsi: float | None,
     if rsi is not None and rsi >= c["rsi_overbought"]:
         return "SELL", f"suracheté (RSI {rsi:.0f}) — alléger / sortir"
     if ma50 is not None and price < ma50 and not ma50_rising:
+        if st_bull:
+            return "WAIT", "cassure sous la MA50 en daily MAIS la dynamique court terme (4h) repart — on attend la confirmation avant de sortir"
         return "SELL", "cassure sous la MA50 en tendance baissière — la dynamique se retourne, envisager de sortir"
     # 2) Entrées
     if rsi is not None and rsi < c["rsi_oversold"]:
@@ -85,6 +96,58 @@ def _signal(typ: str, price: float, entry: float | None, rsi: float | None,
             and rsi is not None and 50 <= rsi <= 68):
         return "BUY", "reprise au-dessus des moyennes mobiles — momentum qui repart"
     return "HOLD", "rien à signaler"
+
+
+# ─────────────────────────────────────────────────────────────
+# DYNAMIQUE COURT TERME (pour ne pas vendre dans un rebond)
+# ─────────────────────────────────────────────────────────────
+
+def _momentum_bullish(df) -> bool | None:
+    """La dynamique récente repart-elle à la hausse ?
+
+    On regarde 3 signes simples sur la dernière bougie du timeframe fourni :
+      - RSI qui remonte (vs il y a 3 bougies)
+      - histogramme MACD qui se retourne (devient moins négatif / positif)
+      - prix qui repasse au-dessus de sa MA20
+    Reversal haussier confirmé si au moins 2 des 3 sont vrais.
+    Retourne None si pas assez de données (l'appelant gère le repli).
+    """
+    try:
+        if df is None or df.empty or len(df) < 35:
+            return None
+        d = data_fetcher.add_indicators(df)
+        rsi_s, hist_s, ma20_s, close_s = d["rsi"], d["macd_hist"], d["ma20"], d["close"]
+        rsi_now, rsi_prev = rsi_s.iloc[-1], rsi_s.iloc[-3]
+        h_now, h_prev = hist_s.iloc[-1], hist_s.iloc[-3]
+        ma20_now, price = ma20_s.iloc[-1], close_s.iloc[-1]
+
+        def ok(x):  # NaN -> False
+            return x == x
+
+        rsi_rising = ok(rsi_now) and ok(rsi_prev) and rsi_now > rsi_prev
+        macd_turning = ok(h_now) and ok(h_prev) and h_now > h_prev
+        reclaim = ok(ma20_now) and price > ma20_now
+        return sum([bool(rsi_rising), bool(macd_turning), bool(reclaim)]) >= 2
+    except Exception as e:  # noqa: BLE001
+        logger.warning("_momentum_bullish KO : %s", e)
+        return None
+
+
+def _short_term_bullish(ticker: str, daily_df) -> bool:
+    """True si la dynamique court terme repart. Priorité au 4h, repli sur le daily récent."""
+    if not config.MONITOR.get("short_term_confirm"):
+        return False
+    interval = config.MONITOR.get("short_term_interval", "4h")
+    period = config.MONITOR.get("short_term_period", "60d")
+    try:
+        df_st = data_fetcher.fetch_ticker(ticker, period=period, interval=interval)
+        res = _momentum_bullish(df_st)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("court terme %s KO : %s", ticker, e)
+        res = None
+    if res is None:  # 4h indisponible -> repli sur la dynamique récente du daily
+        res = _momentum_bullish(daily_df)
+    return bool(res)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -113,7 +176,14 @@ def analyze(stock: dict) -> dict:
         ma50_rising = ma50 > ma50_prev
         entry = stock.get("entry")
 
-        code, reason = _signal(stock["type"], price, entry, rsi, ma20, ma50, ma200, ma50_rising)
+        # Dynamique court terme : ne calculée que si la cassure de tendance est
+        # plausible (prix sous la MA50) — inutile de taper l'API 4h sinon.
+        st_bull = False
+        if ma50 is not None and price < ma50 and not ma50_rising:
+            st_bull = _short_term_bullish(tk, df)
+
+        code, reason = _signal(stock["type"], price, entry, rsi, ma20, ma50, ma200,
+                               ma50_rising, st_bull=st_bull)
         out.update({
             "ok": True, "price": price, "rsi": rsi, "ma50": ma50, "ma200": ma200,
             "pnl": ((price - entry) / entry) if entry else None,
@@ -246,7 +316,12 @@ def check_and_alert(send: bool = True) -> dict:
     alerts = []
     for r in results:
         if r.get("ticker") in changed:
-            tag = "ACHAT" if r["signal"].startswith("BUY") else "VENTE/ALLÉGER"
+            if r["signal"].startswith("BUY"):
+                tag = "ACHAT"
+            elif r["signal"] == "WAIT":
+                tag = "À SURVEILLER"
+            else:
+                tag = "VENTE/ALLÉGER"
             msg = f"⚡ SIGNAL {tag}\n{_fmt_line(r)}"
             if r.get("ai"):
                 msg += "\n" + r["ai"]
@@ -259,8 +334,18 @@ def check_and_alert(send: bool = True) -> dict:
                 telegram_bot.send_message(a)
         except Exception as e:  # noqa: BLE001
             logger.warning("Envoi alerte monitor échoué : %s", e)
-    logger.info("Monitor : %s alerte(s) ponctuelle(s)", len(alerts))
-    return {"alerts": len(alerts), "results": results}
+
+    # Alertes de franchissement de prix (niveaux clés type Sanofi 76 / Hermès 1690)
+    price_alerts = 0
+    try:
+        from alerts import price_alerts as pa
+        price_alerts = pa.check(send=send).get("alerts", 0)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Alertes prix échouées : %s", e)
+
+    logger.info("Monitor : %s alerte(s) ponctuelle(s), %s alerte(s) prix",
+                len(alerts), price_alerts)
+    return {"alerts": len(alerts), "price_alerts": price_alerts, "results": results}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -272,6 +357,7 @@ def format_bulletin(results: list[dict]) -> str:
     today = dt.date.today().isoformat()
     buys = [r for r in results if r.get("signal", "").startswith("BUY")]
     sells = [r for r in results if r.get("signal") in ("SELL", "TRIM")]
+    waits = [r for r in results if r.get("signal") == "WAIT"]
     holds = [r for r in results if r.get("signal") == "HOLD"]
     errs = [r for r in results if not r.get("ok")]
 
@@ -292,7 +378,11 @@ def format_bulletin(results: list[dict]) -> str:
         lines.append("🔴 À VENDRE / ALLÉGER :")
         lines += block(sells)
         lines.append("")
-    if not buys and not sells:
+    if waits:
+        lines.append("🟡 SOUS SURVEILLANCE (cassure daily mais rebond court terme — on attend) :")
+        lines += block(waits)
+        lines.append("")
+    if not buys and not sells and not waits:
         lines.append("Rien à faire aujourd'hui — aucune valeur en zone d'achat ou de vente.")
         lines.append("")
     if holds:
