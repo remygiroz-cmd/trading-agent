@@ -39,6 +39,10 @@ POLYGON_API_KEY = os.getenv("POLYGON_API_KEY", "")
 # FUSEAU HORAIRE ET PLANIFICATION
 # ─────────────────────────────────────────────────────────────
 
+# Interrupteur général. False = l'agent ne fait PLUS RIEN (aucun scan, aucun
+# appel IA, aucun buzz, aucun bilan) -> zéro coût API. Réversible : repasser à True.
+AGENT_ENABLED = False
+
 TIMEZONE = "Europe/Paris"
 
 SCAN_SCHEDULE = [

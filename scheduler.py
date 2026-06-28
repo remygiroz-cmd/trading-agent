@@ -198,6 +198,12 @@ def run_due(tolerance_min: int = 8) -> dict:
     l'instant présent (à `tolerance_min` minutes près). Conçu pour être appelé
     par un cron (GitHub Actions, etc.) aux horaires prévus.
     """
+    # Interrupteur général : si l'agent est désactivé, on ne fait STRICTEMENT rien
+    # (aucun scan, aucun appel IA, aucun buzz, aucun bilan) -> zéro coût.
+    if not getattr(config, "AGENT_ENABLED", True):
+        logger.info("Agent désactivé (AGENT_ENABLED=False) — aucune tâche exécutée.")
+        return {"paused": True}
+
     # Toujours traiter les commandes/clics Telegram en attente (même le week-end)
     try:
         from alerts import daily_report
