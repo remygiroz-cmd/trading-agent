@@ -13,6 +13,8 @@ Réutilise le débat existant. Usage : python main.py tweet "<texte du tweet>"
 import re
 import logging
 
+import requests
+
 import data_fetcher
 
 logger = logging.getLogger("tweet")
