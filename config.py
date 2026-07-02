@@ -98,6 +98,9 @@ WATCHLIST_MONITOR = [
     {"name": "Microsoft",   "ticker": "MSFT",     "type": "conviction", "entry": 394.24,  "cur": "$"},
     {"name": "Tesla",       "ticker": "TSLA",     "type": "conviction", "entry": 441.28,  "cur": "$"},
     {"name": "IonQ",        "ticker": "IONQ",     "type": "conviction", "entry": 39.97,   "cur": "$"},
+    # Surveillance (pas encore en portefeuille — signaux d'achat sur repli ; entry=None)
+    {"name": "Alphabet (Google)",   "ticker": "GOOGL",  "type": "conviction", "entry": None, "cur": "$"},
+    {"name": "Schneider Electric",  "ticker": "SU.PA",  "type": "conviction", "entry": None, "cur": "€"},
     # Spéculatives (entrer / sortir)
     {"name": "Sanofi",            "ticker": "SAN.PA",   "type": "spec", "entry": 80.04,  "cur": "€"},
     {"name": "Sartorius Stedim",  "ticker": "DIM.PA",   "type": "spec", "entry": 184.70, "cur": "€"},

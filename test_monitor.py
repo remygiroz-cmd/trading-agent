@@ -95,10 +95,12 @@ check("spec objectif atteint + rebond 4h -> VENTE (bénéfices prioritaires)",
 print(SEP)
 print("4. config watchlist cohérente")
 wl = config.WATCHLIST_MONITOR
-check("11 valeurs surveillées", len(wl) == 11)
-check("6 convictions", sum(1 for s in wl if s["type"] == "conviction") == 6)
+check("13 valeurs surveillées", len(wl) == 13)
+check("8 convictions", sum(1 for s in wl if s["type"] == "conviction") == 8)
 check("5 spéculatives", sum(1 for s in wl if s["type"] == "spec") == 5)
-check("toutes ont un prix d'achat", all(s.get("entry") for s in wl))
+# entry facultatif (valeurs en simple surveillance) ; s'il est présent, il est positif
+check("prix d'achat positif quand renseigné",
+      all((s.get("entry") is None) or (s["entry"] > 0) for s in wl))
 
 print(SEP)
 print("5. format bulletin (sans réseau)")
