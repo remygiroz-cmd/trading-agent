@@ -37,6 +37,16 @@ SIGNALS = {
     "HOLD":       ("⚪", "CONSERVER", False),
 }
 
+# Ordre net en tête de chaque ligne — Rémy veut des avis tranchés, pas des nuances.
+ORDERS = {
+    "BUY_STRONG": "ACHÈTE MAINTENANT",
+    "BUY":        "ACHÈTE",
+    "SELL":       "VENDS",
+    "TRIM":       "ALLÈGE",
+    "WAIT":       "ATTENDS",
+    "HOLD":       "GARDE",
+}
+
 
 # ─────────────────────────────────────────────────────────────
 # MOTEUR DE SIGNAL (pur, testable)
@@ -213,18 +223,18 @@ def _interpret(signal_code: str, final_score: float, buy_votes: int) -> str:
     is_buy = signal_code.startswith("BUY")
     if is_buy:
         if bullish:
-            verdict = "✅ confirment l'achat"
+            verdict = "✅ confirment l'achat — vas-y"
         elif bearish:
-            verdict = "⚠️ prudentes — le creux est peut-être piégé"
+            verdict = "❌ contre : le creux sent le piège — n'achète pas, attends"
         else:
-            verdict = "🤔 avis partagé"
+            verdict = "🤔 partagées — je maintiens l'achat (le signal technique prime)"
     else:  # signal de vente
         if bearish:
-            verdict = "✅ confirment (peu d'intérêt à l'achat)"
+            verdict = "✅ confirment la vente — vends"
         elif bullish:
-            verdict = "⚠️ y voient une occasion d'achat malgré le signal — réévalue"
+            verdict = "⚠️ y voient un point d'achat — ne vends que la moitié"
         else:
-            verdict = "🤔 avis partagé"
+            verdict = "🤔 partagées — je maintiens la vente (le signal technique prime)"
     return f"{verdict} ({final_score:.0f}/100, {buy_votes}/3 ACHETER)"
 
 
@@ -263,13 +273,15 @@ def _market_status() -> dict:
 # ─────────────────────────────────────────────────────────────
 
 def _fmt_line(r: dict) -> str:
-    emoji, label, _ = SIGNALS.get(r.get("signal", "HOLD"), SIGNALS["HOLD"])
+    code = r.get("signal", "HOLD")
+    emoji, label, _ = SIGNALS.get(code, SIGNALS["HOLD"])
+    order = ORDERS.get(code, "GARDE")
     cur = r.get("cur", "")
     pnl = r.get("pnl")
     pnl_txt = f" · ta PV {pnl*100:+.0f}%" if pnl is not None else ""
     price = r.get("price")
     price_txt = f" ({price:.2f}{cur})" if price is not None else ""
-    return f"{emoji} {r['name']}{price_txt} — {r['reason']}{pnl_txt}"
+    return f"{emoji} {order} {r['name']}{price_txt} — {r['reason']}{pnl_txt}"
 
 
 def _is_actionable(code: str) -> bool:
@@ -392,7 +404,7 @@ def format_bulletin(results: list[dict]) -> str:
         lines.append(f"⚪ À conserver : {held}")
     if errs:
         lines.append(f"\n⚠️ Données indisponibles : {', '.join(r['name'] for r in errs)}")
-    lines.append("\n(Signaux indicatifs — tu gardes la décision finale.)")
+    lines.append("\n(Ordres nets — la dernière décision reste la tienne.)")
     return "\n".join(lines)
 
 

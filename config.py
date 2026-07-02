@@ -77,6 +77,24 @@ MONITOR = {
 }
 
 # ─────────────────────────────────────────────────────────────
+# PÉPITES DU JOUR (cf. pepites.py)
+# Radar quotidien des valeurs susceptibles d'exploser à la hausse dans les
+# heures/jours à venir. Signal issu de l'étude discover.py, validé par le
+# backtest explosive.py : volume > 1.3x + momentum 5j > +5% + ATR% > 5% +
+# marché porteur. Priorité PEA (Euronext), complété par les US (CTO).
+# ─────────────────────────────────────────────────────────────
+PEPITES = {
+    "enabled": True,
+    "time": "09:10",          # chaque matin, juste après le bulletin portefeuille
+    "top_n": 3,               # nombre max de pépites proposées par jour
+    "pea_first": True,        # priorité aux valeurs éligibles PEA
+    "cooldown_days": 5,       # ne pas reproposer le même ticker pendant N jours
+    "min_vol_ratio": 1.3,     # volume du jour vs moyenne 20j
+    "min_ret5": 0.05,         # +5% mini sur 5 jours (le mouvement a commencé)
+    "min_atr_pct": 0.05,      # volatilité mini pour espérer un vrai mouvement
+}
+
+# ─────────────────────────────────────────────────────────────
 # ALERTES DE FRANCHISSEMENT DE PRIX (cf. alerts/price_alerts.py)
 # Prévient AU MOMENT où une valeur franchit un niveau clé (dans un sens donné).
 # Anti-doublon : réarmé automatiquement quand le prix repasse de l'autre côté.

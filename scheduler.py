@@ -284,6 +284,15 @@ def run_due(tolerance_min: int = 8) -> dict:
                     else:                            # créneaux suivants = alertes ponctuelles
                         monitor.check_and_alert(send=True)
                     return {"ran": "monitor", "slot": t}
+
+            # Pépites du jour (radar hausse explosive) — 1x/jour après le bulletin
+            pep = getattr(config, "PEPITES", {})
+            if pep.get("enabled") and due(pep["time"], 150) and not already_done("pepites"):
+                mark_done("pepites")   # marqué avant : scan lourd (~340 tickers)
+                import pepites
+                res = pepites.run(send=True)
+                return {"ran": "pepites", "picks": res.get("picks", 0)}
+
             logger.info("Monitor : aucun créneau dû à %s.", n.strftime("%H:%M"))
             return {"ran": None}
         except Exception as e:  # noqa: BLE001
