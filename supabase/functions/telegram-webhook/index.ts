@@ -16,6 +16,9 @@ const TG_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 const WEBHOOK_SECRET = Deno.env.get("TELEGRAM_WEBHOOK_SECRET") ?? "";
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Optionnel : token GitHub pour réveiller le cerveau Python immédiatement
+// (sinon la demande est traitée au prochain réveil cron, sous 15 min).
+const GH_TOKEN = Deno.env.get("GH_TOKEN") ?? "";
 
 const sbHeaders = {
   apikey: SB_KEY,
@@ -258,8 +261,44 @@ async function diagMessage(): Promise<string> {
   return msg;
 }
 
+// ── /analyse : la grosse analyse tourne côté Python (GitHub Actions).
+// Ici on accuse réception tout de suite, on met la demande en file dans
+// agent_state, et on réveille le cerveau si un token GitHub est configuré.
+async function queueAnalysis(query: string, chatId: number): Promise<string> {
+  const cur = await sbSelect("agent_state", "select=value&key=eq.pending_analyses");
+  const list: any[] = cur.length ? (cur[0].value ?? []) : [];
+  list.push({ query, chat_id: chatId, at: new Date().toISOString() });
+  await sbUpsertState("pending_analyses", list);
+
+  let eta = "au prochain réveil du bot (moins de 15 min)";
+  if (GH_TOKEN) {
+    try {
+      const r = await fetch(
+        "https://api.github.com/repos/remygiroz-cmd/trading-agent/actions/workflows/agent.yml/dispatches",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${GH_TOKEN}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "trading-agent-webhook",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ref: "main", inputs: { command: "cron" } }),
+        },
+      );
+      if (r.status === 204) eta = "dans 2-3 minutes";
+    } catch (e) {
+      console.error("dispatch analyse KO", e);
+    }
+  }
+  return `🔎 J'analyse ${query} en profondeur (technique daily + 4h, fondamentaux, ` +
+    `actualités, débat des 3 IA). Verdict net ${eta}.`;
+}
+
 const HELP = `👋 Agent boursier connecté.
 Commandes :
+/analyse <valeur> — analyse approfondie + verdict net (achète / attends tel prix)
 /stats — performances (réussite par secteur, conviction…)
 /dashboard — tableau de bord visuel (fichier à ouvrir)
 /paper — portefeuille fictif (1000 €/trade)
@@ -326,7 +365,14 @@ Deno.serve(async (req) => {
     } else if (update.message?.text) {
       const text = update.message.text as string;
       const chatId = update.message.chat.id as number;
-      if (/^\/dashboard\b/i.test(text.trim())) {
+      const analyseMatch = text.trim().match(/^\/(analyse|avis)\b\s*(.*)$/i);
+      if (analyseMatch) {
+        const query = analyseMatch[2].trim();
+        const reply = query
+          ? await queueAnalysis(query, chatId)
+          : "Dis-moi quoi analyser : /analyse sanofi (ou un ticker Yahoo : /analyse SAN.PA)";
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+      } else if (/^\/dashboard\b/i.test(text.trim())) {
         const html = await buildHtml();
         await tgDocument(chatId, "dashboard.html", html, "📊 Tableau de bord — ouvre-le dans ton navigateur");
       } else {

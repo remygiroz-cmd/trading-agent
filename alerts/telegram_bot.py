@@ -71,6 +71,7 @@ def send_message(text: str, chat_id: str | None = None,
 
 
 BOT_COMMANDS = [
+    ("analyse", "Analyse approfondie d'une valeur + verdict net"),
     ("stats", "Mes performances (réussite, espérance…)"),
     ("dashboard", "Tableau de bord visuel (fichier)"),
     ("paper", "Portefeuille fictif (paper trading)"),
