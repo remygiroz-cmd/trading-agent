@@ -119,7 +119,22 @@ async function diagMessage(): Promise<string> {
   return `🩺 ${runs.length} passage(s) aujourd'hui — système actif.`;
 }
 
+// ── /analyse : la grosse analyse tourne côté Python (GitHub Actions).
+// Ici on accuse réception tout de suite, on met la demande en file dans
+// agent_state, et on réveille le cerveau (wakeAgent) pour une réponse rapide.
+async function queueAnalysis(query: string, chatId: number): Promise<string> {
+  const cur = await sbSelect("agent_state", "select=value&key=eq.pending_analyses");
+  const list: any[] = cur.length ? (cur[0].value ?? []) : [];
+  list.push({ query, chat_id: chatId, at: new Date().toISOString() });
+  await sbUpsertState("pending_analyses", list);
+  await wakeAgent();
+  const eta = GH_TOKEN ? "dans 2-3 minutes" : "au prochain réveil du bot (moins de 15 min)";
+  return `🔎 J'analyse ${query} en profondeur (technique daily + 4h, fondamentaux, ` +
+    `actualités, débat des 3 IA). Verdict net ${eta}.`;
+}
+
 const HELP = `👋 Agent de suivi de portefeuille.
+/analyse <valeur> — analyse approfondie + verdict net (achète / attends tel prix)
 /portefeuille — valeur en temps réel de ton CTO + PEA (PV + variation du jour)
 📷 Envoie une CAPTURE de transaction Trade Republic -> je l'ajoute au portefeuille
 /transactions — journal de tes achats/ventes enregistrés
@@ -234,7 +249,18 @@ Deno.serve(async (req) => {
         await tg("sendMessage", { chat_id: chatId, text: "Je n'ai pas pu récupérer l'image, réessaie." });
       }
     } else if (update.message?.text) {
-      await tg("sendMessage", { chat_id: update.message.chat.id, text: await handleCommand(update.message.text) });
+      const text = update.message.text as string;
+      const chatId = update.message.chat.id as number;
+      const analyseMatch = text.trim().match(/^\/(analyse|avis)\b\s*(.*)$/i);
+      if (analyseMatch) {
+        const query = analyseMatch[2].trim();
+        const reply = query
+          ? await queueAnalysis(query, chatId)
+          : "Dis-moi quoi analyser : /analyse sanofi (ou un ticker Yahoo : /analyse SAN.PA)";
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+      } else {
+        await tg("sendMessage", { chat_id: chatId, text: await handleCommand(text) });
+      }
     }
   } catch (e) {
     console.error("webhook error", e);

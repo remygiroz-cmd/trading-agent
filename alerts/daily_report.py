@@ -148,6 +148,17 @@ def handle_command(text: str) -> str:
         _set_mode(cmd)
         return TELEGRAM_COMMANDS[cmd]
 
+    if cmd in ("/analyse", "/avis"):
+        parts = text.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            return ("Dis-moi quoi analyser : /analyse sanofi (ou un ticker Yahoo : "
+                    "/analyse SAN.PA, /analyse NVDA)")
+        try:
+            import analyse
+            return analyse.run(parts[1], send=False)["message"]
+        except Exception as e:  # noqa: BLE001
+            return f"Analyse impossible : {str(e)[:100]}"
+
     if cmd == "/status":
         return _status_message()
 
@@ -198,6 +209,7 @@ def handle_command(text: str) -> str:
     if cmd in ("/start", "/help"):
         return ("👋 Agent boursier connecté.\n"
                 "Commandes :\n"
+                "/analyse <valeur> — analyse approfondie + verdict net (achète / attends tel prix)\n"
                 "/paper — récap du portefeuille virtuel (1000 €/trade)\n"
                 "/diag — santé du jour (scans, candidats, meilleur score)\n"
                 "/stats — performances (réussite par IA, secteur, conviction)\n"
@@ -221,13 +233,14 @@ def _save_offset(offset: int) -> None:
 
 
 def _ensure_commands_registered() -> None:
-    """Déclare le menu de commandes à Telegram une seule fois (auto-réparation)."""
+    """Déclare le menu de commandes à Telegram (re-déclare si la liste a changé)."""
     try:
         from memory import state
-        if state.get_state("tg_commands_registered", default=False):
+        version = ",".join(c for c, _ in telegram_bot.BOT_COMMANDS)
+        if state.get_state("tg_commands_registered", default=None) == version:
             return
         if telegram_bot.set_my_commands():
-            state.set_state("tg_commands_registered", True)
+            state.set_state("tg_commands_registered", version)
     except Exception as e:  # noqa: BLE001
         logger.debug("Enregistrement commandes différé : %s", e)
 

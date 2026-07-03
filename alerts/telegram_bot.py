@@ -71,6 +71,7 @@ def send_message(text: str, chat_id: str | None = None,
 
 
 BOT_COMMANDS = [
+    ("analyse", "🔎 Analyse approfondie d'une valeur + verdict net"),
     ("portefeuille", "💼 Valeur temps réel de ton CTO + PEA"),
     ("transactions", "📒 Journal de tes achats/ventes"),
     ("annuler", "↩️ Annuler la dernière transaction enregistrée"),

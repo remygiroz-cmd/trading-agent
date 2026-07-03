@@ -221,6 +221,24 @@ def run_due(tolerance_min: int = 8) -> dict:
         except Exception as e:  # noqa: BLE001
             logger.warning("Traitement file monitor échoué : %s", e)
 
+    # Analyses à la demande (/analyse) déposées par le webhook Telegram.
+    # Traitées en priorité et même le week-end : Rémy attend une réponse.
+    try:
+        from memory import state as _pa_state
+        pending = _pa_state.get_state("pending_analyses", default=[]) or []
+        if pending:
+            _pa_state.set_state("pending_analyses", [])   # vidée avant : pas de double envoi
+            import analyse
+            for req in pending[:3]:                        # garde-fou coût (3 max par réveil)
+                try:
+                    analyse.run(req.get("query", ""), send=True)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("analyse '%s' échouée : %s", req.get("query"), e)
+            if len(pending) > 3:
+                logger.warning("%s analyse(s) ignorée(s) (garde-fou)", len(pending) - 3)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("File d'analyses échouée : %s", e)
+
     n = now_paris()
 
     # Radar buzz : récap de fin d'essai (peut tomber un week-end) — toujours vérifié
@@ -296,6 +314,15 @@ def run_due(tolerance_min: int = 8) -> dict:
                     else:                            # créneaux suivants = alertes ponctuelles
                         monitor.check_and_alert(send=True)
                     return {"ran": "monitor", "slot": t}
+
+            # Pépites du jour (radar hausse explosive) — 1x/jour après le bulletin
+            pep = getattr(config, "PEPITES", {})
+            if pep.get("enabled") and due(pep["time"], 150) and not already_done("pepites"):
+                mark_done("pepites")   # marqué avant : scan lourd (~340 tickers)
+                import pepites
+                res = pepites.run(send=True)
+                return {"ran": "pepites", "picks": res.get("picks", 0)}
+
             logger.info("Monitor : aucun créneau dû à %s.", n.strftime("%H:%M"))
             return {"ran": None}
         except Exception as e:  # noqa: BLE001

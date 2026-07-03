@@ -67,7 +67,46 @@ MONITOR = {
     "spec_take_profit": 0.15,         # spéculatif : +15% depuis l'achat -> prendre les bénéfices
     "ai_confirm": True,               # les 3 IA confirment/nuancent chaque signal actionnable
     "ai_max_per_run": 6,              # plafond de débats IA par exécution (coût maîtrisé)
+    # Confirmation COURT TERME avant de vendre sur une cassure de tendance.
+    # Le signal daily dit "cassé" mais le 4h peut déjà repartir (rebond, sortie de
+    # canal baissier / bullflag, RSI qui remonte, MACD qui se retourne). Dans ce cas
+    # on n'envoie PAS "vendre" : on passe en "ATTENDRE" et on surveille la confirmation.
+    "short_term_confirm": True,
+    "short_term_interval": "4h",
+    "short_term_period": "60d",       # historique 4h récupéré pour juger la dynamique
 }
+
+# ─────────────────────────────────────────────────────────────
+# PÉPITES DU JOUR (cf. pepites.py)
+# Radar quotidien des valeurs susceptibles d'exploser à la hausse dans les
+# heures/jours à venir. Signal issu de l'étude discover.py, validé par le
+# backtest explosive.py : volume > 1.3x + momentum 5j > +5% + ATR% > 5% +
+# marché porteur. Priorité PEA (Euronext), complété par les US (CTO).
+# ─────────────────────────────────────────────────────────────
+PEPITES = {
+    "enabled": True,
+    "time": "09:10",          # chaque matin, juste après le bulletin portefeuille
+    "top_n": 3,               # nombre max de pépites proposées par jour
+    "pea_first": True,        # priorité aux valeurs éligibles PEA
+    "cooldown_days": 5,       # ne pas reproposer le même ticker pendant N jours
+    "min_vol_ratio": 1.3,     # volume du jour vs moyenne 20j
+    "min_ret5": 0.05,         # +5% mini sur 5 jours (le mouvement a commencé)
+    "min_atr_pct": 0.05,      # volatilité mini pour espérer un vrai mouvement
+}
+
+# ─────────────────────────────────────────────────────────────
+# ALERTES DE FRANCHISSEMENT DE PRIX (cf. alerts/price_alerts.py)
+# Prévient AU MOMENT où une valeur franchit un niveau clé (dans un sens donné).
+# Anti-doublon : réarmé automatiquement quand le prix repasse de l'autre côté.
+#   dir "above" : alerte quand le prix passe AU-DESSUS de level
+#   dir "below" : alerte quand le prix passe EN DESSOUS de level
+# ─────────────────────────────────────────────────────────────
+PRICE_ALERTS = [
+    {"name": "Sanofi", "ticker": "SAN.PA", "level": 76.0, "dir": "above", "cur": "€",
+     "msg": "franchit 76€ — sortie du canal baissier confirmée, le signal de vente est annulé"},
+    {"name": "Hermès", "ticker": "RMS.PA", "level": 1690.0, "dir": "above", "cur": "€",
+     "msg": "franchit 1690€ — neckline du W cassée, reprise haussière confirmée"},
+]
 
 WATCHLIST_MONITOR = [
     # Convictions (long terme — renforcer sur repli)
@@ -77,6 +116,9 @@ WATCHLIST_MONITOR = [
     {"name": "Microsoft",   "ticker": "MSFT",     "type": "conviction", "entry": 394.24,  "cur": "$"},
     {"name": "Tesla",       "ticker": "TSLA",     "type": "conviction", "entry": 441.28,  "cur": "$"},
     {"name": "IonQ",        "ticker": "IONQ",     "type": "conviction", "entry": 39.97,   "cur": "$"},
+    # Surveillance (pas encore en portefeuille — signaux d'achat sur repli ; entry=None)
+    {"name": "Alphabet (Google)",   "ticker": "GOOGL",  "type": "conviction", "entry": None, "cur": "$"},
+    {"name": "Schneider Electric",  "ticker": "SU.PA",  "type": "conviction", "entry": None, "cur": "€"},
     # Spéculatives (entrer / sortir)
     {"name": "Sanofi",            "ticker": "SAN.PA",   "type": "spec", "entry": 80.04,  "cur": "€"},
     {"name": "Sartorius Stedim",  "ticker": "DIM.PA",   "type": "spec", "entry": 184.70, "cur": "€"},
