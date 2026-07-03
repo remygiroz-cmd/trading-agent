@@ -40,7 +40,15 @@ jobs:
         if: steps.secrets.outputs.present == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          RAW_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
+          # Tolère une URL complète collée dans le secret (https://xxx.supabase.co,
+          # URL du dashboard…) : on extrait le ref (20 lettres minuscules) proprement.
+          REF=$(echo "$RAW_REF" | grep -oE '[a-z]{20}' | head -1)
+          if [ -z "$REF" ]; then
+            echo "::error::Impossible d'extraire le project ref de SUPABASE_PROJECT_REF."
+            exit 1
+          fi
           supabase functions deploy telegram-webhook \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --project-ref "$REF" \
             --no-verify-jwt
