@@ -1,0 +1,46 @@
+name: Déploiement webhook Telegram (Supabase)
+
+# Déploie automatiquement la fonction telegram-webhook à chaque modification,
+# pour que la version en ligne ne diverge plus jamais du code du dépôt.
+#
+# Secrets requis (Settings -> Secrets and variables -> Actions) :
+#   SUPABASE_ACCESS_TOKEN — token personnel (dashboard Supabase -> Account -> Access Tokens)
+#   SUPABASE_PROJECT_REF  — ref du projet (visible dans l'URL du dashboard)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifier la présence des secrets
+        id: secrets
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$REF" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_REF absents — déploiement sauté (à faire à la main)."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: supabase/setup-cli@v1
+        if: steps.secrets.outputs.present == 'true'
+        with:
+          version: latest
+      - name: Déployer telegram-webhook
+        if: steps.secrets.outputs.present == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy telegram-webhook \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
