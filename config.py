@@ -67,6 +67,10 @@ MONITOR = {
     "spec_take_profit": 0.15,         # spéculatif : +15% depuis l'achat -> prendre les bénéfices
     "ai_confirm": True,               # les 3 IA confirment/nuancent chaque signal actionnable
     "ai_max_per_run": 6,              # plafond de débats IA par exécution (coût maîtrisé)
+    # Anti-spam (demande de Rémy) : une alerte ponctuelle ⚡ ne part que si le
+    # score des 3 IA atteint ce minimum. En dessous (ou sans score) : silence.
+    # Le bulletin du matin (1 msg/jour) et les alertes de prix ne sont pas filtrés.
+    "min_ai_score": 50,
     # Confirmation COURT TERME avant de vendre sur une cassure de tendance.
     # Le signal daily dit "cassé" mais le 4h peut déjà repartir (rebond, sortie de
     # canal baissier / bullflag, RSI qui remonte, MACD qui se retourne). Dans ce cas

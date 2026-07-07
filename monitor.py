@@ -340,8 +340,12 @@ def _interpret(signal_code: str, final_score: float, buy_votes: int) -> str:
     return f"{verdict} ({final_score:.0f}/100, {buy_votes}/3 ACHETER)"
 
 
-def ai_opinion(stock: dict, analysis: dict, market: dict) -> str | None:
-    """Lance le débat des 3 IA sur la valeur et retourne un avis court (ou None)."""
+def ai_opinion(stock: dict, analysis: dict, market: dict) -> tuple[str | None, float | None]:
+    """Lance le débat des 3 IA sur la valeur.
+
+    Retourne (avis court, score final 0-100) — (None, None) si le débat échoue.
+    Le score sert aussi de filtre anti-spam (config.MONITOR["min_ai_score"]).
+    """
     try:
         from agents import debate, context_builder
         snap = analysis.get("snapshot") or {}
@@ -356,10 +360,10 @@ def ai_opinion(stock: dict, analysis: dict, market: dict) -> str | None:
             f"{a.capitalize()} {v.get('verdict', '?')[:4].lower()} {v.get('score', '?')}/10"
             for a, v in votes.items())
         head = _interpret(analysis["signal"], res["final_score"], res["buy_votes"])
-        return f"🤖 IA : {head}\n   {per}"
+        return f"🤖 IA : {head}\n   {per}", float(res["final_score"])
     except Exception as e:  # noqa: BLE001
         logger.warning("ai_opinion %s KO : %s", stock.get("ticker"), e)
-        return None
+        return None, None
 
 
 def _market_status() -> dict:
@@ -414,8 +418,19 @@ def _enrich_ai(results: list[dict], market: dict, only: set | None = None) -> No
             continue
         if n >= cap:
             break
-        r["ai"] = ai_opinion(r, r, market)
+        r["ai"], r["ai_score"] = ai_opinion(r, r, market)
         n += 1
+
+
+def _ai_gate(r: dict) -> bool:
+    """Filtre anti-spam : une alerte ponctuelle ne part que si le score des 3 IA
+    atteint config.MONITOR["min_ai_score"]. Pas de score (débat non lancé ou en
+    échec) = pas de message : Rémy préfère le silence au bruit."""
+    mn = config.MONITOR.get("min_ai_score", 0)
+    if not mn:
+        return True
+    score = r.get("ai_score")
+    return score is not None and score >= mn
 
 
 def check_and_alert(send: bool = True) -> dict:
@@ -428,8 +443,12 @@ def check_and_alert(send: bool = True) -> dict:
         _enrich_ai(results, _market_status(), only=changed)
 
     alerts = []
+    muted = 0
     for r in results:
         if r.get("ticker") in changed:
+            if not _ai_gate(r):   # score IA < minimum -> pas de message (anti-spam)
+                muted += 1
+                continue
             if r["signal"].startswith("BUY"):
                 tag = "ACHAT"
             elif r["signal"] == "WAIT":
@@ -440,6 +459,9 @@ def check_and_alert(send: bool = True) -> dict:
             if r.get("ai"):
                 msg += "\n" + r["ai"]
             alerts.append(msg)
+    if muted:
+        logger.info("Monitor : %s alerte(s) silencée(s) (score IA < %s)",
+                    muted, config.MONITOR.get("min_ai_score"))
 
     if send and alerts:
         try:

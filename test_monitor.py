@@ -133,6 +133,20 @@ check("IA partagées + achat -> avis tranché quand même", "je maintiens l'acha
 check("IA partagées + vente -> avis tranché quand même", "je maintiens la vente" in m._interpret("SELL", 55, 1))
 
 print(SEP)
+print("6bis. filtre anti-spam : score IA minimum avant d'envoyer une alerte")
+_orig_min = config.MONITOR.get("min_ai_score")
+config.MONITOR["min_ai_score"] = 50
+check("score 33 -> alerte silencée", not m._ai_gate({"ai_score": 33.0}))
+check("score 50 -> alerte envoyée", m._ai_gate({"ai_score": 50.0}))
+check("score 75 -> alerte envoyée", m._ai_gate({"ai_score": 75.0}))
+check("pas de score (débat KO) -> silence", not m._ai_gate({"ai_score": None}))
+check("pas de score (jamais lancé) -> silence", not m._ai_gate({}))
+config.MONITOR["min_ai_score"] = 0
+check("filtre désactivé (0) -> tout passe", m._ai_gate({"ai_score": None}))
+config.MONITOR["min_ai_score"] = _orig_min
+check("config : seuil actif à 50", config.MONITOR["min_ai_score"] == 50)
+
+print(SEP)
 print("7. extraction de tickers d'un tweet")
 import tweet as tw
 check("extrait $NVDA $AMD (dédupliqué)",
