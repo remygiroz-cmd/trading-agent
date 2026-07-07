@@ -106,22 +106,35 @@ print(SEP)
 print("5. format bulletin (sans réseau)")
 fake = [
     {"name": "LVMH", "cur": "€", "ok": True, "price": 480.0, "pnl": 0.01, "signal": "BUY",
-     "reason": "repli sur la MA50"},
+     "reason": "repli sur la MA50", "ai_score": 70.0},
     {"name": "Soitec", "cur": "€", "ok": True, "price": 180.0, "pnl": 0.16, "signal": "SELL",
-     "reason": "objectif atteint"},
+     "reason": "objectif atteint", "ai_score": 55.0},
     {"name": "Sanofi", "cur": "€", "ok": True, "price": 75.0, "pnl": -0.06, "signal": "WAIT",
-     "reason": "cassure MA50 mais rebond court terme"},
+     "reason": "cassure MA50 mais rebond court terme", "ai_score": 62.0},
+    {"name": "Sartorius", "cur": "€", "ok": True, "price": 180.2, "pnl": -0.02, "signal": "BUY",
+     "reason": "reprise au-dessus des moyennes", "ai_score": 16.0},   # IA contre -> ignoré
     {"name": "Tesla", "cur": "$", "ok": True, "price": 400.0, "pnl": -0.12, "signal": "HOLD",
      "reason": "rien"},
 ]
 b = m.format_bulletin(fake)
 check("section achat présente", "À ACHETER" in b and "LVMH" in b)
 check("section vente présente", "À VENDRE" in b and "Soitec" in b)
-check("section surveillance présente", "SOUS SURVEILLANCE" in b and "Sanofi" in b)
+check("section surveillance présente", "SOUS SURVEILLANCE" in b and "ATTENDS Sanofi" in b)
 check("conserver listé avec PV", "Tesla" in b and "-12%" in b)
 check("ordre net ACHÈTE en tête de ligne", "ACHÈTE LVMH" in b)
 check("ordre net VENDS en tête de ligne", "VENDS Soitec" in b)
-check("ordre net ATTENDS en tête de ligne", "ATTENDS Sanofi" in b)
+check("signal faible (16/100) hors des recos", "ACHÈTE Sartorius" not in b)
+check("signal faible rétrogradé en conserver", "Sartorius (-2%)" in b)
+check("note des signaux ignorés", "1 signal(aux) faible(s) ignoré(s)" in b)
+
+# bulletin où TOUT est faible -> "rien à faire"
+fake_weak = [
+    {"name": "Riber", "cur": "€", "ok": True, "price": 11.3, "pnl": -0.15, "signal": "SELL",
+     "reason": "cassure", "ai_score": 33.0},
+]
+b2 = m.format_bulletin(fake_weak)
+check("tout faible -> rien à faire", "Rien à faire aujourd'hui" in b2)
+check("tout faible -> pas de section vente", "À VENDRE" not in b2)
 
 print(SEP)
 print("6. avis IA : interprétation vs signal technique")

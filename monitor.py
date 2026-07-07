@@ -491,10 +491,17 @@ def check_and_alert(send: bool = True) -> dict:
 def format_bulletin(results: list[dict]) -> str:
     import datetime as dt
     today = dt.date.today().isoformat()
-    buys = [r for r in results if r.get("signal", "").startswith("BUY")]
-    sells = [r for r in results if r.get("signal") in ("SELL", "TRIM")]
-    waits = [r for r in results if r.get("signal") == "WAIT"]
-    holds = [r for r in results if r.get("signal") == "HOLD"]
+    # Même filtre anti-spam que les alertes ⚡ : une reco n'apparaît dans le
+    # bulletin que si le score IA atteint le minimum. Les signaux trop faibles
+    # sont rétrogradés en "à conserver" (la valeur reste visible, sans reco).
+    def kept(r):
+        return _is_actionable(r.get("signal", "HOLD")) and _ai_gate(r)
+    buys = [r for r in results if r.get("signal", "").startswith("BUY") and kept(r)]
+    sells = [r for r in results if r.get("signal") in ("SELL", "TRIM") and kept(r)]
+    waits = [r for r in results if r.get("signal") == "WAIT" and kept(r)]
+    demoted = [r for r in results if r.get("ok")
+               and _is_actionable(r.get("signal", "HOLD")) and not _ai_gate(r)]
+    holds = [r for r in results if r.get("signal") == "HOLD"] + demoted
     errs = [r for r in results if not r.get("ok")]
 
     def block(rows):
@@ -526,6 +533,9 @@ def format_bulletin(results: list[dict]) -> str:
             f"{r['name']} ({r['pnl']*100:+.0f}%)" if r.get("pnl") is not None else r["name"]
             for r in holds)
         lines.append(f"⚪ À conserver : {held}")
+    if demoted:
+        lines.append(f"\n🔇 {len(demoted)} signal(aux) faible(s) ignoré(s) "
+                     f"(score IA < {config.MONITOR.get('min_ai_score')}/100)")
     if errs:
         lines.append(f"\n⚠️ Données indisponibles : {', '.join(r['name'] for r in errs)}")
     lines.append("\n(Ordres nets — la dernière décision reste la tienne.)")
